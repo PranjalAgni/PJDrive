@@ -1,0 +1,7 @@
+node_modules/
+dist/
+sync-folder/*
+!sync-folder/.gitkeep
+.env
+*.env.local
+apps/sync/.sync-state.json
