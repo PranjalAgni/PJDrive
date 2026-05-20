@@ -4,13 +4,14 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db';
 import { JWT_SECRET, BCRYPT_ROUNDS } from '../config';
 import { insertUser, getUserByEmail } from './auth.queries';
+import { RegisterBody, LoginBody, parseBody } from '../schemas';
 
 export const authRouter = Router();
 
 authRouter.post('/register', async (req, res) => {
-  const { email, password } = req.body as { email: string; password: string };
-  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
-  if (password.length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
+  const parsed = parseBody(RegisterBody, req.body, res);
+  if (!parsed.ok) return;
+  const { email, password } = parsed.data;
 
   const normalizedEmail = email.trim().toLowerCase();
   const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -28,8 +29,9 @@ authRouter.post('/register', async (req, res) => {
 });
 
 authRouter.post('/login', async (req, res) => {
-  const { email, password } = req.body as { email: string; password: string };
-  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const parsed = parseBody(LoginBody, req.body, res);
+  if (!parsed.ok) return;
+  const { email, password } = parsed.data;
 
   const normalizedEmail = email.trim().toLowerCase();
 

@@ -13,22 +13,22 @@ import {
   insertSyncLogCreated,
   getFileById,
 } from './upload.queries';
+import { InitUploadBody, CompleteUploadBody, parseBody } from '../schemas';
 
 export const uploadRouter = Router();
 
 uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { fileName, mimeType, sizeBytes, totalChunks, checksum } = req.body as {
-      fileName: string; mimeType: string; sizeBytes: number; totalChunks: number; checksum: string;
-    };
-
-    if (!fileName || !totalChunks) return res.status(400).json({ error: 'fileName and totalChunks required' });
+    const parsed = parseBody(InitUploadBody, req.body, res);
+    if (!parsed.ok) return;
+    const { fileName, mimeType, sizeBytes, totalChunks, checksum } = parsed.data;
 
     const storageKey = `${req.userId}/${uuidv4()}/${fileName}`;
 
-    const fileRows = await insertFile.run({
-      ownerId: req.userId!, name: fileName, mimeType, sizeBytes, storageKey, checksum,
-    }, pool);
+    const fileRows = await insertFile.run(
+      { ownerId: req.userId!, name: fileName, mimeType, sizeBytes, storageKey, checksum },
+      pool,
+    );
     const fileId = fileRows[0].id;
 
     const s3UploadId = await initiateMultipart(storageKey);
@@ -38,9 +38,10 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
       chunkUrls.push(await presignChunkUpload(storageKey, s3UploadId, i));
     }
 
-    const uploadRows = await insertUpload.run({
-      fileId, ownerId: req.userId!, uploadId: s3UploadId, totalChunks,
-    }, pool);
+    const uploadRows = await insertUpload.run(
+      { fileId, ownerId: req.userId!, uploadId: s3UploadId, totalChunks },
+      pool,
+    );
 
     return res.json({ uploadId: uploadRows[0].id, chunkUrls });
   } catch (err) {
@@ -51,7 +52,10 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
 
 uploadRouter.get('/status/:uploadId', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const rows = await getUploadStatus.run({ uploadId: req.params.uploadId, ownerId: req.userId! }, pool);
+    const rows = await getUploadStatus.run(
+      { uploadId: req.params.uploadId, ownerId: req.userId! },
+      pool,
+    );
     if (rows.length === 0) return res.status(404).json({ error: 'upload not found' });
     return res.json({ uploadedChunks: rows[0].uploaded_chunks, totalChunks: rows[0].total_chunks });
   } catch (err) {
@@ -62,14 +66,9 @@ uploadRouter.get('/status/:uploadId', requireAuth, async (req: AuthRequest, res)
 
 uploadRouter.post('/complete', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const { uploadId, parts } = req.body as {
-      uploadId: string;
-      parts: { partNumber: number; eTag: string }[];
-    };
-
-    if (!Array.isArray(parts) || parts.length === 0) {
-      return res.status(400).json({ error: 'parts array required' });
-    }
+    const parsed = parseBody(CompleteUploadBody, req.body, res);
+    if (!parsed.ok) return;
+    const { uploadId, parts } = parsed.data;
 
     const uploadRows = await getUploadWithFile.run({ uploadId, ownerId: req.userId! }, pool);
     if (uploadRows.length === 0) return res.status(404).json({ error: 'upload not found' });
@@ -79,7 +78,7 @@ uploadRouter.post('/complete', requireAuth, async (req: AuthRequest, res) => {
     await completeMultipart(
       upload.storage_key,
       upload.upload_id,
-      parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.eTag }))
+      parts.map((p) => ({ PartNumber: p.partNumber, ETag: p.eTag })),
     );
 
     await completeUpload.run({ uploadId }, pool);

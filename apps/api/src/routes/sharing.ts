@@ -9,13 +9,15 @@ import {
   getExistingUserShare,
   insertLinkShare,
 } from './sharing.queries';
+import { ShareUserBody, ShareLinkBody, parseBody } from '../schemas';
 
 export const sharingRouter = Router();
 
 sharingRouter.post('/:id/share', requireAuth, async (req: AuthRequest, res) => {
-  const { email, role } = req.body as { email: string; role: string };
-  if (!email) return res.status(400).json({ error: 'email required' });
-  if (role !== 'editor' && role !== 'viewer') return res.status(400).json({ error: 'role must be editor or viewer' });
+  const parsed = parseBody(ShareUserBody, req.body, res);
+  if (!parsed.ok) return;
+  const { email, role } = parsed.data;
+
   try {
     const fileRows = await checkFileOwnership.run({ fileId: req.params.id, ownerId: req.userId! }, pool);
     if (fileRows.length === 0) return res.status(403).json({ error: 'access denied' });
@@ -40,8 +42,10 @@ sharingRouter.post('/:id/share', requireAuth, async (req: AuthRequest, res) => {
 });
 
 sharingRouter.post('/:id/share/link', requireAuth, async (req: AuthRequest, res) => {
-  const { role } = req.body as { role: string };
-  if (role !== 'editor' && role !== 'viewer') return res.status(400).json({ error: 'role must be editor or viewer' });
+  const parsed = parseBody(ShareLinkBody, req.body, res);
+  if (!parsed.ok) return;
+  const { role } = parsed.data;
+
   try {
     const fileRows = await checkFileOwnership.run({ fileId: req.params.id, ownerId: req.userId! }, pool);
     if (fileRows.length === 0) return res.status(403).json({ error: 'access denied' });

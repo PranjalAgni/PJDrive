@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { pool } from '../db';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getSyncChanges } from './sync.queries';
+import { SyncChangesQuery, parseQuery } from '../schemas';
 
 export const syncRouter = Router();
 
@@ -51,17 +52,9 @@ syncRouter.get('/events', requireAuth, (req: AuthRequest, res) => {
 
 syncRouter.get('/changes', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const sinceRaw = req.query.since as string;
-    let since: Date;
-    if (sinceRaw) {
-      const parsed = new Date(sinceRaw);
-      if (isNaN(parsed.getTime())) {
-        return res.status(400).json({ error: 'invalid since timestamp' });
-      }
-      since = parsed;
-    } else {
-      since = new Date(0);
-    }
+    const parsed = parseQuery(SyncChangesQuery, req.query, res);
+    if (!parsed.ok) return;
+    const since = parsed.data.since ? new Date(parsed.data.since) : new Date(0);
 
     const rows = await getSyncChanges.run({ userId: req.userId!, since }, pool);
     return res.json(rows);
