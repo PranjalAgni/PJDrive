@@ -192,6 +192,8 @@ This rewrites the `.queries.ts` files next to each `.sql` file. Commit both toge
 
 ## Upload flow
 
+![Chunked Upload Pipeline](https://github.com/user-attachments/assets/2ae86ee2-923c-40a4-88ff-5d86832a85bd)
+
 ```
 Client                         API                    MinIO/S3
   |                             |                        |
