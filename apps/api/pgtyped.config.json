@@ -1,0 +1,14 @@
+{
+  "transforms": [
+    {
+      "mode": "sql",
+      "include": "src/**/*.sql",
+      "emitTemplate": "{{dir}}/{{name}}.queries.ts"
+    }
+  ],
+  "srcDir": "./",
+  "db": {
+    "connectionString": "postgres://localhost:5432/pjdrive"
+  },
+  "failOnError": true
+}
