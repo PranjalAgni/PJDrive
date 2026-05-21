@@ -1,0 +1,23 @@
+{
+  "name": "@pjdrive/desktop",
+  "version": "0.0.1",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:electron\"",
+    "dev:main": "tsc --watch --preserveWatchOutput",
+    "dev:electron": "sleep 3 && electron .",
+    "build": "tsc",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@pjdrive/sync": "*",
+    "axios": "^1.7.2",
+    "eventsource": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/eventsource": "^1.1.15",
+    "concurrently": "^8.2.2",
+    "electron": "^34.0.0",
+    "typescript": "^5.4.0"
+  }
+}
