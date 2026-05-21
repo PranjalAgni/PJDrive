@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { registerIpcHandlers, setMainWindow } from './ipc';
+import { getStoredToken, getStoredEmail } from './auth';
+import { startSync, stopSync } from './sync';
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -19,15 +21,33 @@ function createWindow() {
   return win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerIpcHandlers();
-  createWindow();
+  const win = createWindow();
+
+  // Auto-start sync if stored token exists
+  const token = getStoredToken();
+  const email = getStoredEmail();
+  if (token && email) {
+    await startSync(token, email, win);
+  }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (BrowserWindow.getAllWindows().length === 0) {
+      const newWin = createWindow();
+      const token = getStoredToken();
+      const email = getStoredEmail();
+      if (token && email) {
+        startSync(token, email, newWin).catch(console.error);
+      }
+    }
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    stopSync();
+    app.quit();
+  }
+  // On macOS: window closes but app stays alive, sync keeps running
 });

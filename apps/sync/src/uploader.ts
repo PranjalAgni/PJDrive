@@ -5,8 +5,19 @@ import axios from 'axios';
 import { setChecksum } from './state';
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
-const TOKEN = process.env.SYNC_TOKEN || '';
+let currentToken = process.env.SYNC_TOKEN || '';
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+
+export function setSyncToken(token: string) {
+  currentToken = token;
+}
+
+function getApi() {
+  return axios.create({
+    baseURL: API_URL,
+    headers: { Authorization: `Bearer ${currentToken}` },
+  });
+}
 
 function computeChecksum(filePath: string): string {
   const hash = crypto.createHash('sha256');
@@ -25,11 +36,6 @@ function computeChecksum(filePath: string): string {
   return hash.digest('hex');
 }
 
-const api = axios.create({
-  baseURL: API_URL,
-  headers: { Authorization: `Bearer ${TOKEN}` },
-});
-
 export async function uploadFile(filePath: string, fileName: string): Promise<void> {
   const stat = fs.statSync(filePath);
   if (stat.size === 0) throw new Error(`Cannot upload empty file: ${fileName}`);
@@ -37,7 +43,7 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
   const checksum = computeChecksum(filePath);
   const totalChunks = Math.ceil(stat.size / CHUNK_SIZE);
 
-  const { data: initData } = await api.post('/upload/init', {
+  const { data: initData } = await getApi().post('/upload/init', {
     fileName,
     mimeType: 'application/octet-stream',
     sizeBytes: stat.size,
@@ -68,7 +74,7 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
   }
 
   parts.sort((a, b) => a.partNumber - b.partNumber);
-  await api.post('/upload/complete', { uploadId, parts });
+  await getApi().post('/upload/complete', { uploadId, parts });
   setChecksum(filePath, checksum);
   console.log(`[sync] uploaded ${fileName}`);
 }
