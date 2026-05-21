@@ -92,14 +92,19 @@ function connectSSE(win: BrowserWindow) {
     headers: { Authorization: `Bearer ${currentToken}` },
   });
 
-  es.onopen = () => {
+  // eventsource npm package uses addEventListener, not onopen property
+  es.addEventListener('open', () => {
     status.connected = true;
     status.mode = 'sse';
     if (pollInterval) {
       clearInterval(pollInterval);
       pollInterval = null;
     }
-  };
+    // Push status update immediately so renderer doesn't wait up to 5s
+    if (!win.isDestroyed()) {
+      win.webContents.send('sync:status-update', getSyncStatus());
+    }
+  });
 
   es.onmessage = async (e) => {
     try {
@@ -127,6 +132,9 @@ function connectSSE(win: BrowserWindow) {
     status.mode = 'poll';
     es?.close();
     es = null;
+    if (!win.isDestroyed()) {
+      win.webContents.send('sync:status-update', getSyncStatus());
+    }
     if (!pollInterval) {
       pollInterval = setInterval(() => poll(win), POLL_INTERVAL_MS);
     }

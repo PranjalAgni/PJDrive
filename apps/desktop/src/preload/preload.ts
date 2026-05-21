@@ -21,4 +21,7 @@ contextBridge.exposeInMainWorld('api', {
   onActivity: (callback: (event: { type: string; fileName: string; timestamp: string }) => void) => {
     ipcRenderer.on('activity', (_event, data) => callback(data));
   },
+  onStatusUpdate: (callback: (status: { connected: boolean; mode: string; email: string }) => void) => {
+    ipcRenderer.on('sync:status-update', (_event, data) => callback(data));
+  },
 });

@@ -142,6 +142,24 @@ setInterval(() => {
 // Listen for activity events pushed from main process
 window.api.onActivity(addActivityItem);
 
+// Listen for instant status updates pushed from main process (on SSE connect/disconnect)
+window.api.onStatusUpdate(function(status) {
+  const dot  = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  if (!dot || !text) return;
+  dot.className = 'dot';
+  if (status.connected && status.mode === 'sse') {
+    dot.classList.add('dot-green');
+    text.textContent = 'Connected  ' + status.email;
+  } else if (status.connected && status.mode === 'poll') {
+    dot.classList.add('dot-amber');
+    text.textContent = 'Polling  ' + status.email;
+  } else {
+    dot.classList.add('dot-off');
+    text.textContent = 'Disconnected';
+  }
+});
+
 // ── App startup ──────────────────────────────────────────────────────────────
 
 async function init() {
