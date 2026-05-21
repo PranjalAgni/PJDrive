@@ -12,6 +12,17 @@ const API_URL = process.env.API_URL || 'http://localhost:3000';
 const SYNC_FOLDER = path.join(process.cwd(), 'sync-folder');
 const POLL_INTERVAL_MS = 30000;
 
+// Dedup: track recently emitted activity keys to prevent double-emission
+// (poll catch-up + SSE can both fire for the same event)
+const recentlyEmitted = new Set<string>();
+function dedupEmit(win: BrowserWindow, type: 'upload' | 'download', fileName: string) {
+  const key = `${type}:${fileName}`;
+  if (recentlyEmitted.has(key)) return;
+  recentlyEmitted.add(key);
+  setTimeout(() => recentlyEmitted.delete(key), 3000);
+  emitActivity(win, type, fileName);
+}
+
 // Patch setChecksum once at module load to detect completed uploads
 let currentWin: BrowserWindow | null = null;
 const stateModule = require('../../../sync/src/state') as typeof import('../../../sync/src/state');
@@ -19,7 +30,7 @@ const origSetChecksum = stateModule.setChecksum;
 stateModule.setChecksum = (filePath: string, checksum: string) => {
   origSetChecksum(filePath, checksum);
   if (currentWin && !currentWin.isDestroyed() && filePath.startsWith(SYNC_FOLDER)) {
-    emitActivity(currentWin, 'upload', path.basename(filePath));
+    dedupEmit(currentWin, 'upload', path.basename(filePath));
   }
 };
 
@@ -61,7 +72,7 @@ function makeApi() {
   });
 }
 
-async function poll(win: BrowserWindow) {
+async function poll(win: BrowserWindow, silent = false) {
   const since = getLastSyncAt();
   try {
     const { data } = await makeApi().get(`/sync/changes?since=${since}`);
@@ -71,9 +82,9 @@ async function poll(win: BrowserWindow) {
         await downloadFile(event.file_id);
         const afterFiles = fs.existsSync(SYNC_FOLDER) ? fs.readdirSync(SYNC_FOLDER) : [];
         const newFile = afterFiles.find(f => !beforeFiles.includes(f));
-        if (newFile) {
+        if (newFile && !silent) {
           markAsDownloaded(path.join(SYNC_FOLDER, newFile));
-          emitActivity(win, 'download', newFile);
+          dedupEmit(win, 'download', newFile);
         }
       } else if (event.event_type === 'deleted') {
         await deleteLocalFile(event.file_id);
@@ -116,7 +127,7 @@ function connectSSE(win: BrowserWindow) {
         const newFile = afterFiles.find(f => !beforeFiles.includes(f));
         if (newFile) {
           markAsDownloaded(path.join(SYNC_FOLDER, newFile));
-          emitActivity(win, 'download', newFile);
+          dedupEmit(win, 'download', newFile);
         }
       } else if (event.eventType === 'deleted') {
         await deleteLocalFile(event.fileId);
@@ -157,8 +168,8 @@ export async function startSync(token: string, email: string, win: BrowserWindow
 
   currentWin = win;
 
-  // Catch up on missed remote changes
-  await poll(win);
+  // Catch up on missed remote changes silently (no activity emission)
+  await poll(win, true);
 
   // Start chokidar watcher for local → remote
   watcher = startWatcher();

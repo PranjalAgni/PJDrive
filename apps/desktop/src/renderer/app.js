@@ -100,11 +100,10 @@ function addActivityItem(event) {
   const empty = list.querySelector('.activity-empty');
   if (empty) empty.remove();
 
-  const arrow = event.type === 'upload' ? '↑' : '↓';
-
+  const isUpload = event.type === 'upload';
   const arrowSpan = document.createElement('span');
-  arrowSpan.className = 'activity-arrow';
-  arrowSpan.textContent = arrow;
+  arrowSpan.className = 'activity-arrow ' + (isUpload ? 'upload' : 'download');
+  arrowSpan.textContent = isUpload ? '↑' : '↓';
 
   const nameSpan = document.createElement('span');
   nameSpan.className = 'activity-name';
