@@ -8,9 +8,59 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div id="app">
-    <p>PJDrive loading...</p>
+  <!-- Login Screen -->
+  <div id="screen-login" class="screen">
+    <div class="login-container">
+      <h1 class="app-title">PJDrive</h1>
+      <form id="login-form" class="login-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" placeholder="you@example.com" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" placeholder="••••••••" required autocomplete="current-password" />
+        </div>
+        <button id="login-btn" type="submit">Login</button>
+        <p id="login-error" class="error-msg hidden"></p>
+      </form>
+    </div>
   </div>
+
+  <!-- Dashboard Screen (hidden until logged in) -->
+  <div id="screen-dashboard" class="screen hidden">
+    <div class="dashboard-container">
+      <header class="dashboard-header">
+        <span class="app-title-sm">PJDrive</span>
+        <button id="logout-btn" class="btn-ghost">Logout</button>
+      </header>
+
+      <section class="section">
+        <div class="section-label">Sync Status</div>
+        <div class="status-row">
+          <span id="status-dot" class="dot dot-off"></span>
+          <span id="status-text">Connecting...</span>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-label">Sync Folder</div>
+        <div class="folder-row">
+          <span id="folder-path" class="folder-path">—</span>
+          <button id="open-folder-btn" class="btn-ghost">Open</button>
+        </div>
+      </section>
+
+      <section class="section section-activity">
+        <div class="section-label">Recent Activity</div>
+        <div class="divider"></div>
+        <ul id="activity-list" class="activity-list">
+          <li class="activity-empty">No activity yet</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>
