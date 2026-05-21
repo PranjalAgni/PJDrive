@@ -10,13 +10,15 @@ function createWindow() {
     height: 380,
     resizable: false,
     webPreferences: {
+      // __dirname = dist/desktop/src/main → ../preload = dist/desktop/src/preload
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
 
-  win.loadFile(path.join(__dirname, '../../src/renderer/index.html'));
+  // __dirname = dist/desktop/src/main → ../../../../src/renderer = apps/desktop/src/renderer
+  win.loadFile(path.join(__dirname, '../../../../src/renderer/index.html'));
   setMainWindow(win);
   return win;
 }
