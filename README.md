@@ -13,6 +13,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 | `apps/api` | Node.js + Express API — auth, upload, files, sharing, sync SSE |
 | `apps/web` | React + Vite frontend — dashboard, upload UI, sharing, sync |
 | `apps/sync` | Node.js sync client — watches `sync-folder/`, syncs via SSE |
+| `apps/desktop` | Electron desktop app — login, sync status, activity feed |
 | `packages/shared` | Shared TypeScript types across all apps |
 
 ---
@@ -26,6 +27,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **Real-time sync** — SSE push to connected clients on upload/delete; 30s poll fallback when SSE drops
 - **Local sync** — `chokidar` watches `sync-folder/`, debounces changes, diffs checksums before uploading
 - **pgtyped** — all SQL lives in `.sql` files with named queries, fully typed TypeScript generated at codegen time
+- **Electron desktop app** — login with JWT stored in OS keychain (safeStorage), live sync status dot, activity feed, auto-start on launch
 
 ---
 
@@ -43,6 +45,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 | Auth | bcrypt + JWT |
 | Sync transport | SSE + polling fallback |
 | File watching | chokidar |
+| Desktop app | Electron 34, contextBridge IPC, safeStorage |
 
 ---
 
@@ -123,6 +126,63 @@ SYNC_TOKEN=<your-jwt-token> API_URL=http://localhost:3000 npx tsx apps/sync/src/
 
 Drop files into `sync-folder/` — they'll appear in your dashboard within a second.
 
+### 7. (Optional) Run the Electron desktop app
+
+```bash
+# Build TypeScript (run from apps/desktop)
+cd apps/desktop && npm run build
+
+# Launch from repo root so sync-folder/ is resolved correctly
+cd ../..
+npx electron apps/desktop
+```
+
+The app stores your JWT in the OS keychain via Electron `safeStorage` — no need to copy tokens manually. On next launch it auto-logs in and starts syncing immediately.
+
+**What the desktop app shows:**
+- Login screen → stores credentials encrypted in OS keychain
+- Dashboard with live sync status (green = SSE, amber = polling, grey = offline)
+- Recent activity feed — `↑` uploads, `↓` downloads, updates in real time
+- Sync folder path with `[Open]` button to reveal in Finder
+
+---
+
+## Packaging the desktop app (Raycast / Spotlight searchable)
+
+To make the app launchable from Raycast or Spotlight, package it into a `.app` bundle:
+
+**1. Install electron-builder**
+
+```bash
+npm install electron-builder --workspace=apps/desktop --save-dev
+```
+
+**2. Add to `apps/desktop/package.json`**
+
+```json
+"build": {
+  "appId": "com.pjdrive.desktop",
+  "productName": "PJDrive",
+  "mac": { "category": "public.app-category.productivity" },
+  "directories": { "output": "release" },
+  "files": ["dist/**/*", "src/renderer/**/*"]
+},
+"scripts": {
+  "package": "npm run build && electron-builder --mac"
+}
+```
+
+**3. Build and install**
+
+```bash
+cd apps/desktop && npm run package
+cp -r release/mac/PJDrive.app /Applications/
+```
+
+Raycast and Spotlight will discover it automatically within seconds of copying to `/Applications`.
+
+> **Note:** Before packaging, change `sync-folder` from a `process.cwd()`-relative path to a fixed location like `~/Documents/PJDrive` — otherwise the packaged app won't find the folder when launched from `/Applications`. Update `SYNC_FOLDER` in `apps/desktop/src/main/sync.ts` and `apps/sync/src/watcher.ts` to use `app.getPath('documents') + '/PJDrive'`.
+
 ---
 
 ## Project structure
@@ -149,13 +209,26 @@ pjdrive/
 │   │       ├── lib/             # chunker.ts, upload.ts
 │   │       ├── api/client.ts    # Axios instance + interceptors
 │   │       └── store/auth.ts    # Zustand auth store
-│   └── sync/
+│   ├── sync/
+│   │   └── src/
+│   │       ├── index.ts         # entry: watcher + SSE + polling
+│   │       ├── watcher.ts       # chokidar file watcher
+│   │       ├── uploader.ts      # chunked upload to API
+│   │       ├── downloader.ts    # download from API to sync-folder
+│   │       └── state.ts         # checksum + last-sync-at persistence
+│   └── desktop/
 │       └── src/
-│           ├── index.ts         # entry: watcher + SSE + polling
-│           ├── watcher.ts       # chokidar file watcher
-│           ├── uploader.ts      # chunked upload to API
-│           ├── downloader.ts    # download from API to sync-folder
-│           └── state.ts         # checksum + last-sync-at persistence
+│           ├── main/            # Electron main process (TypeScript)
+│           │   ├── index.ts     # BrowserWindow, app lifecycle
+│           │   ├── auth.ts      # safeStorage: store/retrieve/clear JWT
+│           │   ├── ipc.ts       # ipcMain.handle registrations
+│           │   └── sync.ts      # watcher + SSE lifecycle, activity events
+│           ├── preload/
+│           │   └── preload.ts   # contextBridge: exposes window.api
+│           └── renderer/        # vanilla HTML/CSS/JS (no bundler)
+│               ├── index.html   # login screen + dashboard
+│               ├── styles.css
+│               └── app.js       # screen routing, IPC calls, activity list
 ├── packages/
 │   └── shared/src/types.ts      # User, File, UploadJob, ShareRecord, SyncEvent
 ├── sync-folder/                 # watched directory (contents gitignored)
