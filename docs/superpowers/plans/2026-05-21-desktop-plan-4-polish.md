@@ -221,3 +221,5 @@ cat .gitignore | grep desktop
 ```
 
 Expected: `apps/desktop/dist/` present.
+
+Plan created using superpower skill
