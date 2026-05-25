@@ -251,15 +251,82 @@ sync_log       — id, user_id, file_id, event_type, created_at
 
 ---
 
-## Regenerating typed SQL
+## Useful commands
 
-After editing any `.sql` file:
+All commands run from the **repo root** unless noted.
+
+### Running individual packages
+
+```bash
+# Run a single package's dev server
+npx turbo run dev --filter=@pjdrive/api
+npx turbo run dev --filter=@pjdrive/web
+npx turbo run dev --filter=@pjdrive/desktop
+
+# Build a single package
+npx turbo run build --filter=@pjdrive/desktop
+
+# Run all dev servers together
+npx turbo run dev
+
+# Equivalent with npm workspaces (no Turbo)
+npm run dev --workspace=apps/api
+npm run build --workspace=apps/desktop
+```
+
+### Testing
+
+```bash
+# Run all API tests
+cd apps/api && DATABASE_URL=postgres://localhost:5432/pjdrive S3_ENDPOINT=http://localhost:9002 npx vitest run
+
+# Run a single test file
+cd apps/api && DATABASE_URL=postgres://localhost:5432/pjdrive npx vitest run src/routes/auth.test.ts
+
+# Run tests for all packages
+npx turbo run test
+```
+
+### Database
+
+```bash
+# Run migrations (first time or after adding a new migration)
+DATABASE_URL=postgres://localhost:5432/pjdrive npx tsx apps/api/src/migrate.ts
+
+# Open psql shell
+psql postgres://localhost:5432/pjdrive
+
+# Useful psql commands
+\dt          # list all tables
+\d files     # describe the files table
+SELECT * FROM files LIMIT 5;
+\q           # quit
+```
+
+### Regenerating typed SQL
+
+After editing any `.sql` file in `apps/api/src/routes/`:
 
 ```bash
 DATABASE_URL=postgres://localhost:5432/pjdrive npm run codegen --prefix apps/api
+# or with Turbo:
+DATABASE_URL=postgres://localhost:5432/pjdrive npx turbo run codegen --filter=@pjdrive/api
 ```
 
 This rewrites the `.queries.ts` files next to each `.sql` file. Commit both together.
+
+### Desktop app
+
+```bash
+# Build TypeScript (required before running)
+npx turbo run build --filter=@pjdrive/desktop
+
+# Run (must be from repo root so sync-folder/ is found at process.cwd())
+npx electron apps/desktop
+
+# Watch mode for development (recompiles on save, restart electron manually)
+npm run dev --workspace=apps/desktop
+```
 
 ---
 
