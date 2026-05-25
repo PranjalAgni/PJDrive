@@ -7,6 +7,7 @@ import { uploadRouter } from './routes/upload';
 import { sharingRouter } from './routes/sharing';
 import { sharedWithMeRouter } from './routes/sharedWithMe';
 import { syncRouter } from './routes/sync';
+import { statsRouter } from './routes/stats';
 import { pool } from './db';
 import { resolveShareToken } from './index.queries';
 
@@ -36,6 +37,7 @@ app.use('/files', sharingRouter);
 app.use('/files', filesRouter);
 app.use('/upload', uploadRouter);
 app.use('/sync', syncRouter);
+app.use('/stats', statsRouter);
 
 app.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
   res.json({ userId: req.userId });

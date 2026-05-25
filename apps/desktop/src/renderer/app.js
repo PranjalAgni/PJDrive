@@ -43,6 +43,7 @@ async function initDashboard() {
   const { path: folderPath } = await window.api.sync.getFolder();
   document.getElementById('folder-path').textContent = folderPath;
   await refreshStatus();
+  await refreshStats();
 }
 
 async function refreshStatus() {
@@ -63,12 +64,32 @@ async function refreshStatus() {
   }
 }
 
+async function refreshStats() {
+  try {
+    const stats = await window.api.stats.get();
+    document.getElementById('stat-files').textContent = stats.fileCount.toLocaleString();
+    document.getElementById('stat-size').textContent = formatBytes(stats.totalBytes);
+    document.getElementById('stat-last-sync').textContent =
+      stats.lastSyncAt ? relativeTime(stats.lastSyncAt) : 'Never';
+    document.getElementById('stat-mode').textContent = formatMode(stats.mode);
+  } catch {
+    // keep showing previous values on error
+  }
+}
+
 // Poll status every 5 seconds when on dashboard
 setInterval(() => {
   if (!document.getElementById('screen-dashboard').classList.contains('hidden')) {
     refreshStatus();
   }
 }, 5000);
+
+// Refresh stats every 30 seconds when on dashboard
+setInterval(() => {
+  if (!document.getElementById('screen-dashboard').classList.contains('hidden')) {
+    refreshStats();
+  }
+}, 30000);
 
 // Logout button
 document.getElementById('logout-btn').addEventListener('click', async () => {
@@ -93,6 +114,20 @@ function relativeTime(isoString) {
   if (s < 60)   return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   return `${Math.floor(s / 3600)}h ago`;
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 KB';
+  if (bytes < 1024) return '1 KB';
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+}
+
+function formatMode(mode) {
+  if (mode === 'sse')  return 'SSE (real-time)';
+  if (mode === 'poll') return 'Polling (fallback)';
+  return 'Offline';
 }
 
 function addActivityItem(event) {

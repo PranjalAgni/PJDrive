@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('api', {
     getStatus: () => ipcRenderer.invoke('sync:status'),
     getFolder: () => ipcRenderer.invoke('sync:folder'),
   },
+  stats: {
+    get: () => ipcRenderer.invoke('stats:get'),
+  },
   folder: {
     open: () => ipcRenderer.invoke('folder:open'),
   },
