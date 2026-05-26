@@ -20,14 +20,37 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 
 ## Features
 
+### Web app
 - **Chunked resumable upload** — files split into 10MB chunks, SHA-256 checksum, uploaded directly to S3/MinIO via presigned URLs (API never proxies bytes)
+- **Resume support** — interrupted uploads resume from the last successful chunk, not from scratch
 - **Download** — short-lived presigned URLs, CDN-cacheable
-- **Sharing** — share by email (editor/viewer role) or generate a public link with a token
-- **Access control** — owner → user share → link share → 403, checked on every request
-- **Real-time sync** — SSE push to connected clients on upload/delete; 30s poll fallback when SSE drops
-- **Local sync** — `chokidar` watches `sync-folder/`, debounces changes, diffs checksums before uploading
+- **File management** — list, download, delete files from the dashboard
+- **Sharing by email** — share a file with another user as editor or viewer
+- **Public link sharing** — generate a shareable token URL; anyone with the link can access at the set role
+- **Access control** — owner → user share → link share → 403, checked on every file request
+- **Shared with me** — view all files other users have shared with you
+
+### Sync
+- **Real-time sync** — SSE push to all connected clients on upload or delete; instant notification
+- **Polling fallback** — automatic 30s poll when SSE connection drops; reconnects when server recovers
+- **Local → remote** — `chokidar` watches `sync-folder/`, debounces 500ms, diffs SHA-256 checksums before uploading (skips unchanged files)
+- **Remote → local** — downloads new/updated files into `sync-folder/` on SSE event or poll
+- **Echo prevention** — downloaded files are marked to prevent the watcher from re-uploading them
+
+### API
+- **JWT auth** — bcrypt password hashing, 7-day tokens, email normalisation
+- **Zod validation** — all request bodies validated at runtime with a central `schemas.ts`
 - **pgtyped** — all SQL lives in `.sql` files with named queries, fully typed TypeScript generated at codegen time
-- **Electron desktop app** — login with JWT stored in OS keychain (safeStorage), live sync status dot, activity feed, auto-start on launch
+- **Transactional deletes** — file row + sync_log written atomically; S3 object deleted after commit
+
+### Electron desktop app
+- **Secure login** — email/password login with JWT stored encrypted in OS keychain via `safeStorage`
+- **Auto-login** — token persists across restarts; dashboard opens directly on launch
+- **Live sync status** — green dot (SSE), amber dot (polling), grey (offline); updates instantly on connection change
+- **Real-time activity feed** — `↑` uploads and `↓` downloads appear live, with relative timestamps that refresh
+- **Stats section** — file count, total storage size, last sync time, connection mode; refreshes every 30 seconds
+- **Sync folder shortcut** — `[Open]` button reveals `sync-folder/` in Finder/Explorer
+- **Deduplication** — same file never appears twice in the activity feed from overlapping poll + SSE events
 
 ---
 
