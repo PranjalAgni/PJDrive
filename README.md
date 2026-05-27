@@ -50,7 +50,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **Real-time activity feed** — `↑` uploads and `↓` downloads appear live, with relative timestamps that refresh
 - **Stats section** — file count, total storage size, last sync time, connection mode; refreshes every 30 seconds
 - **Sync folder shortcut** — `[Open]` button reveals `sync-folder/` in Finder/Explorer
-- **Deduplication** — same file never appears twice in the activity feed from overlapping poll + SSE events
+- **Deduplication** — same file never appears twice in the activity feed from overlapping poll + SSE events(this might not work)
 
 ---
 
