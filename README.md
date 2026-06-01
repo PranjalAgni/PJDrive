@@ -397,3 +397,111 @@ Fallback:
   SSE drops → onerror → start 30s poll interval
   SSE reconnects → onopen → clear poll interval
 ```
+
+---
+
+## Learning notes
+
+This project was built as a learning exercise. Here are the key concepts and design decisions worth understanding.
+
+### Why chunked upload?
+
+A naive upload sends the whole file to the API server, which then writes it to S3. This breaks at large files — a 50GB file would exhaust the server's memory and a single network hiccup means starting over.
+
+Chunked multipart upload solves both problems:
+1. The client splits the file into 10MB `Blob` slices using `file.slice(offset, offset + CHUNK_SIZE)`
+2. The API creates a multipart upload session in S3 and returns presigned PUT URLs — one per chunk
+3. The client uploads each chunk **directly to S3** via `axios.put(presignedUrl, chunk)` — the API never touches the bytes
+4. The client calls `/upload/complete` with the ETags returned by S3, and S3 assembles the file
+
+The API only handles ~200 bytes of metadata per request regardless of file size. Resumability comes for free: the `uploads` table tracks which chunks completed, so an interrupted upload picks up from the last successful chunk.
+
+### Why SSE instead of WebSockets for sync?
+
+Server-Sent Events (SSE) are a one-way stream from server to client over a regular HTTP connection. When a file is uploaded or deleted, the API calls `broadcastSyncEvent(userId, event)` which writes to all open SSE streams for that user.
+
+WebSockets would add bidirectional complexity we don't need — the client never needs to push events to the server over the persistent connection. SSE is simpler to implement, works through most proxies, and auto-reconnects via the browser's `EventSource` API.
+
+The polling fallback (`GET /sync/changes?since=<timestamp>`) exists for environments where SSE is unreliable (corporate proxies, sleep/wake cycles). The sync client switches automatically.
+
+### Why pgtyped for SQL?
+
+Most ORMs hide SQL behind method chains, which makes it hard to understand what queries are actually running. Raw `pool.query('SELECT ...', [params])` works but gives you no type safety — a typo in a column name fails at runtime, not compile time.
+
+pgtyped takes a middle path: you write plain SQL in `.sql` files with named parameter annotations (`:userId` instead of `$1`), and a codegen step introspects the live database schema to generate fully-typed TypeScript functions. The result:
+
+```typescript
+// Before pgtyped
+const { rows } = await pool.query(
+  'SELECT id, name FROM files WHERE owner_id = $1',
+  [req.userId]
+);
+// rows is any[] — no type safety
+
+// After pgtyped
+const rows = await listFilesByOwner.run({ ownerId: req.userId! }, pool);
+// rows is Array<{ id: string; name: string; ... }> — fully typed
+```
+
+Column renames, missing parameters, and wrong types all become compile errors.
+
+### Design patterns used
+
+See [`docs/design-patterns.md`](docs/design-patterns.md) for a full walkthrough of the patterns in this codebase, each with exact code examples:
+
+| Pattern | Where |
+|---|---|
+| Middleware Chain | `requireAuth` → route handler |
+| Middleware Factory | `requireFileAccess('viewer')` returns a configured middleware |
+| Facade | `storage.ts` hides the S3 SDK behind 4 simple functions |
+| Observer | SSE broadcast — `clients` Map + `broadcastSyncEvent` |
+| Strategy | Sync: SSE (primary) swaps to polling (fallback) at runtime |
+| Repository | pgtyped `.sql` files separate SQL from business logic |
+| Debounce | `watcher.ts` — 500ms debounce before uploading changed files |
+| Idempotency Key | `uploadId` enables resumable chunked uploads |
+| Singleton | `pool` and `s3` instantiated once, shared everywhere |
+| Guard Clause | Early returns flatten nested conditionals in route handlers |
+| Transactional Outbox | SSE broadcast fires only after DB COMMIT |
+| Content Addressable Storage | SHA-256 checksum prevents redundant uploads |
+
+### Electron: main process vs renderer
+
+Electron runs two processes:
+
+- **Main process** (Node.js) — has full OS access. Creates windows, manages files, makes network requests, stores secrets.
+- **Renderer process** (Chromium) — runs the UI. Cannot access Node.js APIs directly.
+
+They communicate via IPC (inter-process communication). `contextBridge` in the preload script is the security boundary — it explicitly whitelists which functions the renderer can call:
+
+```
+Renderer (app.js)
+  window.api.stats.get()          ← defined by contextBridge in preload.ts
+       ↓ ipcRenderer.invoke('stats:get')
+Main process (ipc.ts)
+  ipcMain.handle('stats:get', async () => { ... })   ← full Node.js access
+```
+
+`contextIsolation: true` and `nodeIntegration: false` ensure the renderer cannot escape this boundary even if it runs untrusted content.
+
+### Why the sync token is stored with safeStorage
+
+The desktop app needs to make authenticated API requests from the main process, which means storing the JWT somewhere persistent. Options:
+
+- **Plain file** — readable by anyone with filesystem access
+- **localStorage** — only accessible from the renderer, not the main process
+- **safeStorage** — Electron API that encrypts the value using the OS keychain (Keychain on macOS, DPAPI on Windows, libsecret on Linux)
+
+`safeStorage.encryptString(token)` returns a `Buffer` that can only be decrypted on the same machine by the same OS user. The encrypted bytes are stored in the app's userData directory. Even if someone copies the file, they cannot read the token without the OS credentials.
+
+### Monorepo with Turborepo
+
+Turborepo is a build system for monorepos. It understands the dependency graph between packages and:
+- Runs tasks in the right order (build `shared` before `api` or `web`)
+- Caches task outputs — if nothing changed, `turbo build` skips the build entirely
+- Runs independent tasks in parallel
+
+The `--filter` flag targets a specific package:
+```bash
+npx turbo run build --filter=@pjdrive/desktop   # build only desktop
+npx turbo run test --filter=@pjdrive/api        # test only api
+```
