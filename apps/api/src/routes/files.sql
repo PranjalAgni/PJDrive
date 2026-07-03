@@ -1,13 +1,21 @@
 /* @name ListFilesByOwner */
-SELECT id, name, mime_type, size_bytes, checksum, created_at, updated_at
+SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
 FROM files
 WHERE owner_id = :ownerId
 ORDER BY created_at DESC;
 
 /* @name GetFileByIdAndOwner */
-SELECT id, name, mime_type, size_bytes, checksum, created_at, updated_at
+SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
 FROM files
 WHERE id = :fileId AND owner_id = :ownerId;
+
+/* @name UpdateFile */
+UPDATE files
+SET name = COALESCE(:name, name),
+    folder_id = CASE WHEN :setFolder::boolean THEN :folderId ELSE folder_id END,
+    updated_at = NOW()
+WHERE id = :fileId AND owner_id = :ownerId
+RETURNING id, owner_id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at;
 
 /* @name GetFileByIdWithAccess */
 SELECT f.id, f.name, f.mime_type, f.size_bytes, f.checksum, f.created_at, f.updated_at

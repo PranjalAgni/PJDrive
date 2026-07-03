@@ -8,6 +8,7 @@ export type NumberOrString = number | string;
 /** 'InsertFile' parameters type */
 export interface IInsertFileParams {
   checksum?: string | null | void;
+  folderId?: string | null | void;
   mimeType?: string | null | void;
   name?: string | null | void;
   ownerId?: string | null | void;
@@ -26,13 +27,13 @@ export interface IInsertFileQuery {
   result: IInsertFileResult;
 }
 
-const insertFileIR: any = {"usedParamSet":{"ownerId":true,"name":true,"mimeType":true,"sizeBytes":true,"storageKey":true,"checksum":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":89,"b":96}]},{"name":"name","required":false,"transform":{"type":"scalar"},"locs":[{"a":99,"b":103}]},{"name":"mimeType","required":false,"transform":{"type":"scalar"},"locs":[{"a":106,"b":114}]},{"name":"sizeBytes","required":false,"transform":{"type":"scalar"},"locs":[{"a":117,"b":126}]},{"name":"storageKey","required":false,"transform":{"type":"scalar"},"locs":[{"a":129,"b":139}]},{"name":"checksum","required":false,"transform":{"type":"scalar"},"locs":[{"a":142,"b":150}]}],"statement":"INSERT INTO files (owner_id, name, mime_type, size_bytes, storage_key, checksum)\nVALUES (:ownerId, :name, :mimeType, :sizeBytes, :storageKey, :checksum)\nRETURNING id"};
+const insertFileIR: any = {"usedParamSet":{"ownerId":true,"name":true,"mimeType":true,"sizeBytes":true,"storageKey":true,"checksum":true,"folderId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":100,"b":107}]},{"name":"name","required":false,"transform":{"type":"scalar"},"locs":[{"a":110,"b":114}]},{"name":"mimeType","required":false,"transform":{"type":"scalar"},"locs":[{"a":117,"b":125}]},{"name":"sizeBytes","required":false,"transform":{"type":"scalar"},"locs":[{"a":128,"b":137}]},{"name":"storageKey","required":false,"transform":{"type":"scalar"},"locs":[{"a":140,"b":150}]},{"name":"checksum","required":false,"transform":{"type":"scalar"},"locs":[{"a":153,"b":161}]},{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":164,"b":172}]}],"statement":"INSERT INTO files (owner_id, name, mime_type, size_bytes, storage_key, checksum, folder_id)\nVALUES (:ownerId, :name, :mimeType, :sizeBytes, :storageKey, :checksum, :folderId)\nRETURNING id"};
 
 /**
  * Query generated from SQL:
  * ```
- * INSERT INTO files (owner_id, name, mime_type, size_bytes, storage_key, checksum)
- * VALUES (:ownerId, :name, :mimeType, :sizeBytes, :storageKey, :checksum)
+ * INSERT INTO files (owner_id, name, mime_type, size_bytes, storage_key, checksum, folder_id)
+ * VALUES (:ownerId, :name, :mimeType, :sizeBytes, :storageKey, :checksum, :folderId)
  * RETURNING id
  * ```
  */

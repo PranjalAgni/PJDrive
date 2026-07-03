@@ -1,6 +1,6 @@
 /* @name InsertFile */
-INSERT INTO files (owner_id, name, mime_type, size_bytes, storage_key, checksum)
-VALUES (:ownerId, :name, :mimeType, :sizeBytes, :storageKey, :checksum)
+INSERT INTO files (owner_id, name, mime_type, size_bytes, storage_key, checksum, folder_id)
+VALUES (:ownerId, :name, :mimeType, :sizeBytes, :storageKey, :checksum, :folderId)
 RETURNING id;
 
 /* @name InsertUpload */

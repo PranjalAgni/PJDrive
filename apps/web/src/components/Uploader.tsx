@@ -2,10 +2,11 @@ import { useRef, useState } from 'react';
 import { uploadFile, UploadProgress } from '../lib/upload';
 
 interface Props {
+  currentFolderId: string | null;
   onUploaded: () => void;
 }
 
-export function Uploader({ onUploaded }: Props) {
+export function Uploader({ currentFolderId, onUploaded }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [error, setError] = useState('');
@@ -17,7 +18,7 @@ export function Uploader({ onUploaded }: Props) {
     setProgress({ chunksCompleted: 0, totalChunks: 1 });
 
     try {
-      await uploadFile(file, setProgress);
+      await uploadFile(file, currentFolderId, setProgress);
       setProgress(null);
       onUploaded();
     } catch (err: any) {

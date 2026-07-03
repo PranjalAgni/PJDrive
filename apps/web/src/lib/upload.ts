@@ -11,6 +11,7 @@ export interface UploadProgress {
 
 export async function uploadFile(
   file: File,
+  folderId: string | null,
   onProgress: (p: UploadProgress) => void
 ): Promise<{ id: string; name: string }> {
   const checksum = await computeChecksum(file);
@@ -27,6 +28,7 @@ export async function uploadFile(
     sizeBytes: file.size,
     totalChunks,
     checksum,
+    folderId,
   });
 
   const { uploadId, chunkUrls } = initData as { uploadId: string; chunkUrls: string[] };

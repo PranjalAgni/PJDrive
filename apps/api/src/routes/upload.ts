@@ -21,12 +21,12 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
   try {
     const parsed = parseBody(InitUploadBody, req.body, res);
     if (!parsed.ok) return;
-    const { fileName, mimeType, sizeBytes, totalChunks, checksum } = parsed.data;
+    const { fileName, mimeType, sizeBytes, totalChunks, checksum, folderId } = parsed.data;
 
     const storageKey = `${req.userId}/${uuidv4()}/${fileName}`;
 
     const fileRows = await insertFile.run(
-      { ownerId: req.userId!, name: fileName, mimeType, sizeBytes, storageKey, checksum },
+      { ownerId: req.userId!, name: fileName, mimeType, sizeBytes, storageKey, checksum, folderId: folderId ?? null },
       pool,
     );
     const fileId = fileRows[0].id;

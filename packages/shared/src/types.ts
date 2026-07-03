@@ -12,6 +12,16 @@ export interface File {
   size_bytes: number;
   storage_key: string;
   checksum: string;
+  folder_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Folder {
+  id: string;
+  owner_id: string;
+  parent_id: string | null;
+  name: string;
   created_at: string;
   updated_at: string;
 }

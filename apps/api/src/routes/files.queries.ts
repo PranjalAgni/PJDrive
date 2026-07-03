@@ -10,6 +10,7 @@ export interface IListFilesByOwnerParams {
 export interface IListFilesByOwnerResult {
   checksum: string | null;
   created_at: Date | null;
+  folder_id: string | null;
   id: string;
   mime_type: string | null;
   name: string;
@@ -23,12 +24,12 @@ export interface IListFilesByOwnerQuery {
   result: IListFilesByOwnerResult;
 }
 
-const listFilesByOwnerIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":101,"b":108}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId\nORDER BY created_at DESC"};
+const listFilesByOwnerIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId\nORDER BY created_at DESC"};
 
 /**
  * Query generated from SQL:
  * ```
- * SELECT id, name, mime_type, size_bytes, checksum, created_at, updated_at
+ * SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
  * FROM files
  * WHERE owner_id = :ownerId
  * ORDER BY created_at DESC
@@ -47,6 +48,7 @@ export interface IGetFileByIdAndOwnerParams {
 export interface IGetFileByIdAndOwnerResult {
   checksum: string | null;
   created_at: Date | null;
+  folder_id: string | null;
   id: string;
   mime_type: string | null;
   name: string;
@@ -60,17 +62,61 @@ export interface IGetFileByIdAndOwnerQuery {
   result: IGetFileByIdAndOwnerResult;
 }
 
-const getFileByIdAndOwnerIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":95,"b":101}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":118,"b":125}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, created_at, updated_at\nFROM files\nWHERE id = :fileId AND owner_id = :ownerId"};
+const getFileByIdAndOwnerIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":106,"b":112}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":129,"b":136}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE id = :fileId AND owner_id = :ownerId"};
 
 /**
  * Query generated from SQL:
  * ```
- * SELECT id, name, mime_type, size_bytes, checksum, created_at, updated_at
+ * SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
  * FROM files
  * WHERE id = :fileId AND owner_id = :ownerId
  * ```
  */
 export const getFileByIdAndOwner = new PreparedQuery<IGetFileByIdAndOwnerParams,IGetFileByIdAndOwnerResult>(getFileByIdAndOwnerIR);
+
+
+/** 'UpdateFile' parameters type */
+export interface IUpdateFileParams {
+  fileId?: string | null | void;
+  folderId?: string | null | void;
+  name?: string | null | void;
+  ownerId?: string | null | void;
+  setFolder?: boolean | null | void;
+}
+
+/** 'UpdateFile' return type */
+export interface IUpdateFileResult {
+  checksum: string | null;
+  created_at: Date | null;
+  folder_id: string | null;
+  id: string;
+  mime_type: string | null;
+  name: string;
+  owner_id: string;
+  size_bytes: string | null;
+  updated_at: Date | null;
+}
+
+/** 'UpdateFile' query type */
+export interface IUpdateFileQuery {
+  params: IUpdateFileParams;
+  result: IUpdateFileResult;
+}
+
+const updateFileIR: any = {"usedParamSet":{"name":true,"setFolder":true,"folderId":true,"fileId":true,"ownerId":true},"params":[{"name":"name","required":false,"transform":{"type":"scalar"},"locs":[{"a":33,"b":37}]},{"name":"setFolder","required":false,"transform":{"type":"scalar"},"locs":[{"a":73,"b":82}]},{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":98,"b":106}]},{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":162,"b":168}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":185,"b":192}]}],"statement":"UPDATE files\nSET name = COALESCE(:name, name),\n    folder_id = CASE WHEN :setFolder::boolean THEN :folderId ELSE folder_id END,\n    updated_at = NOW()\nWHERE id = :fileId AND owner_id = :ownerId\nRETURNING id, owner_id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at"};
+
+/**
+ * Query generated from SQL:
+ * ```
+ * UPDATE files
+ * SET name = COALESCE(:name, name),
+ *     folder_id = CASE WHEN :setFolder::boolean THEN :folderId ELSE folder_id END,
+ *     updated_at = NOW()
+ * WHERE id = :fileId AND owner_id = :ownerId
+ * RETURNING id, owner_id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
+ * ```
+ */
+export const updateFile = new PreparedQuery<IUpdateFileParams,IUpdateFileResult>(updateFileIR);
 
 
 /** 'GetFileByIdWithAccess' parameters type */

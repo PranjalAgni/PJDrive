@@ -21,6 +21,7 @@ export const InitUploadBody = z.object({
   sizeBytes: z.number().int().positive({ message: 'sizeBytes must be a positive integer' }),
   totalChunks: z.number().int().min(1).max(10000, { message: 'totalChunks must be between 1 and 10000' }),
   checksum: z.string().min(1, { message: 'checksum required' }),
+  folderId: z.string().uuid().nullable().optional(),
 });
 
 export const CompleteUploadBody = z.object({
@@ -48,6 +49,31 @@ export const ShareLinkBody = z.object({
   role: ShareRole,
 });
 
+// ─── Folders ─────────────────────────────────────────────────────────────────
+
+export const CreateFolderBody = z.object({
+  name: z.string().min(1, { message: 'name required' }).max(500),
+  parentId: z.string().uuid({ message: 'parentId must be a valid UUID' }).nullable().optional(),
+});
+
+export const UpdateFolderBody = z
+  .object({
+    name: z.string().min(1).max(500).optional(),
+    parentId: z.string().uuid().nullable().optional(),
+  })
+  .refine((b) => b.name !== undefined || b.parentId !== undefined, {
+    message: 'name or parentId required',
+  });
+
+export const UpdateFileBody = z
+  .object({
+    name: z.string().min(1).max(500).optional(),
+    folderId: z.string().uuid().nullable().optional(),
+  })
+  .refine((b) => b.name !== undefined || b.folderId !== undefined, {
+    message: 'name or folderId required',
+  });
+
 // ─── Sync ────────────────────────────────────────────────────────────────────
 
 export const SyncChangesQuery = z.object({
@@ -63,6 +89,9 @@ export type CompleteUploadBodyType = z.infer<typeof CompleteUploadBody>;
 export type ShareUserBodyType = z.infer<typeof ShareUserBody>;
 export type ShareLinkBodyType = z.infer<typeof ShareLinkBody>;
 export type SyncChangesQueryType = z.infer<typeof SyncChangesQuery>;
+export type CreateFolderBodyType = z.infer<typeof CreateFolderBody>;
+export type UpdateFolderBodyType = z.infer<typeof UpdateFolderBody>;
+export type UpdateFileBodyType = z.infer<typeof UpdateFileBody>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
