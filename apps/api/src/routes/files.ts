@@ -1,20 +1,16 @@
 import { Router } from 'express';
 import { pool } from '../db';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { s3, BUCKET, presignDownload } from '../storage';
-import { broadcastSyncEvent } from './sync';
+import { presignDownload } from '../storage';
 import { parseBody, UpdateFileBody } from '../schemas';
 import {
   listFilesByOwner,
   getFileByIdAndOwner,
   getFileByIdWithAccess,
-  getFileStorageKey,
   getFileStorageKeyWithAccess,
-  getFileStorageKeyForDelete,
-  insertSyncLogDeleted,
   updateFile,
 } from './files.queries';
+import { softDeleteFile } from './trash.queries';
 
 export const filesRouter = Router();
 
@@ -76,46 +72,14 @@ filesRouter.get('/:id/download-url', requireAuth, async (req: AuthRequest, res) 
   }
 });
 
+// DELETE /files/:id — soft-delete (move to Trash)
 filesRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const rows = await getFileStorageKeyForDelete.run(
-        { fileId: req.params.id, ownerId: req.userId! },
-        client
-      );
-
-      if (rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'file not found' });
-      }
-
-      await insertSyncLogDeleted.run({ userId: req.userId!, fileId: req.params.id }, client);
-
-      // DELETE stays raw — no RETURNING needed, inside transaction
-      await client.query('DELETE FROM files WHERE id=$1', [req.params.id]);
-
-      await client.query('COMMIT');
-
-      broadcastSyncEvent(req.userId!, { fileId: req.params.id, eventType: 'deleted' });
-
-      try {
-        await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: rows[0].storage_key }));
-      } catch (s3Err) {
-        console.error('files delete S3 error (DB already committed):', s3Err);
-      }
-
-      return res.status(204).send();
-    } catch (err) {
-      await client.query('ROLLBACK');
-      throw err;
-    } finally {
-      client.release();
-    }
+    const rows = await softDeleteFile.run({ fileId: req.params.id, ownerId: req.userId! }, pool);
+    if (rows.length === 0) return res.status(404).json({ error: 'file not found' });
+    return res.status(204).send();
   } catch (err) {
-    console.error('files delete error:', err);
+    console.error('files trash error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });

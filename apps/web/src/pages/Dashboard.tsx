@@ -21,6 +21,7 @@ export function Dashboard() {
         <h1>PJDrive</h1>
         <div>
           <Link to="/shared" style={{ marginRight: 16 }}>Shared with me</Link>
+          <Link to="/trash" style={{ marginRight: 16 }}>Trash</Link>
           <span style={{ marginRight: 16 }}>{email}</span>
           <button onClick={clearAuth}>Logout</button>
         </div>

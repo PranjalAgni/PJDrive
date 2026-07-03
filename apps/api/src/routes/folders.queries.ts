@@ -59,14 +59,14 @@ export interface IGetFolderByIdAndOwnerQuery {
   result: IGetFolderByIdAndOwnerResult;
 }
 
-const getFolderByIdAndOwnerIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"params":[{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":85,"b":93}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":110,"b":117}]}],"statement":"SELECT id, owner_id, parent_id, name, created_at, updated_at\nFROM folders\nWHERE id = :folderId AND owner_id = :ownerId"};
+const getFolderByIdAndOwnerIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"params":[{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":85,"b":93}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":110,"b":117}]}],"statement":"SELECT id, owner_id, parent_id, name, created_at, updated_at\nFROM folders\nWHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, owner_id, parent_id, name, created_at, updated_at
  * FROM folders
- * WHERE id = :folderId AND owner_id = :ownerId
+ * WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL
  * ```
  */
 export const getFolderByIdAndOwner = new PreparedQuery<IGetFolderByIdAndOwnerParams,IGetFolderByIdAndOwnerResult>(getFolderByIdAndOwnerIR);
@@ -93,14 +93,14 @@ export interface IListSubfoldersRootQuery {
   result: IListSubfoldersRootResult;
 }
 
-const listSubfoldersRootIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":91,"b":98}]}],"statement":"SELECT id, owner_id, parent_id, name, created_at, updated_at\nFROM folders\nWHERE owner_id = :ownerId AND parent_id IS NULL\nORDER BY name ASC"};
+const listSubfoldersRootIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":91,"b":98}]}],"statement":"SELECT id, owner_id, parent_id, name, created_at, updated_at\nFROM folders\nWHERE owner_id = :ownerId AND parent_id IS NULL AND trashed_at IS NULL\nORDER BY name ASC"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, owner_id, parent_id, name, created_at, updated_at
  * FROM folders
- * WHERE owner_id = :ownerId AND parent_id IS NULL
+ * WHERE owner_id = :ownerId AND parent_id IS NULL AND trashed_at IS NULL
  * ORDER BY name ASC
  * ```
  */
@@ -129,14 +129,14 @@ export interface IListSubfoldersInParentQuery {
   result: IListSubfoldersInParentResult;
 }
 
-const listSubfoldersInParentIR: any = {"usedParamSet":{"ownerId":true,"parentId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":91,"b":98}]},{"name":"parentId","required":false,"transform":{"type":"scalar"},"locs":[{"a":116,"b":124}]}],"statement":"SELECT id, owner_id, parent_id, name, created_at, updated_at\nFROM folders\nWHERE owner_id = :ownerId AND parent_id = :parentId\nORDER BY name ASC"};
+const listSubfoldersInParentIR: any = {"usedParamSet":{"ownerId":true,"parentId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":91,"b":98}]},{"name":"parentId","required":false,"transform":{"type":"scalar"},"locs":[{"a":116,"b":124}]}],"statement":"SELECT id, owner_id, parent_id, name, created_at, updated_at\nFROM folders\nWHERE owner_id = :ownerId AND parent_id = :parentId AND trashed_at IS NULL\nORDER BY name ASC"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, owner_id, parent_id, name, created_at, updated_at
  * FROM folders
- * WHERE owner_id = :ownerId AND parent_id = :parentId
+ * WHERE owner_id = :ownerId AND parent_id = :parentId AND trashed_at IS NULL
  * ORDER BY name ASC
  * ```
  */
@@ -161,14 +161,14 @@ export interface IListAllFoldersByOwnerQuery {
   result: IListAllFoldersByOwnerResult;
 }
 
-const listAllFoldersByOwnerIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":57,"b":64}]}],"statement":"SELECT id, parent_id, name\nFROM folders\nWHERE owner_id = :ownerId\nORDER BY name ASC"};
+const listAllFoldersByOwnerIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":57,"b":64}]}],"statement":"SELECT id, parent_id, name\nFROM folders\nWHERE owner_id = :ownerId AND trashed_at IS NULL\nORDER BY name ASC"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, parent_id, name
  * FROM folders
- * WHERE owner_id = :ownerId
+ * WHERE owner_id = :ownerId AND trashed_at IS NULL
  * ORDER BY name ASC
  * ```
  */
@@ -198,14 +198,14 @@ export interface IListFilesInFolderRootQuery {
   result: IListFilesInFolderRootResult;
 }
 
-const listFilesInFolderRootIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId AND folder_id IS NULL\nORDER BY created_at DESC"};
+const listFilesInFolderRootIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId AND folder_id IS NULL AND trashed_at IS NULL\nORDER BY created_at DESC"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
  * FROM files
- * WHERE owner_id = :ownerId AND folder_id IS NULL
+ * WHERE owner_id = :ownerId AND folder_id IS NULL AND trashed_at IS NULL
  * ORDER BY created_at DESC
  * ```
  */
@@ -236,14 +236,14 @@ export interface IListFilesInFolderQuery {
   result: IListFilesInFolderResult;
 }
 
-const listFilesInFolderIR: any = {"usedParamSet":{"ownerId":true,"folderId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]},{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":137,"b":145}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId AND folder_id = :folderId\nORDER BY created_at DESC"};
+const listFilesInFolderIR: any = {"usedParamSet":{"ownerId":true,"folderId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]},{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":137,"b":145}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId AND folder_id = :folderId AND trashed_at IS NULL\nORDER BY created_at DESC"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
  * FROM files
- * WHERE owner_id = :ownerId AND folder_id = :folderId
+ * WHERE owner_id = :ownerId AND folder_id = :folderId AND trashed_at IS NULL
  * ORDER BY created_at DESC
  * ```
  */
@@ -269,7 +269,7 @@ export interface IGetBreadcrumbQuery {
   result: IGetBreadcrumbResult;
 }
 
-const getBreadcrumbIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"params":[{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":95,"b":103}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":120,"b":127}]}],"statement":"WITH RECURSIVE crumb AS (\n  SELECT id, parent_id, name, 0 AS depth\n  FROM folders\n  WHERE id = :folderId AND owner_id = :ownerId\n  UNION ALL\n  SELECT f.id, f.parent_id, f.name, c.depth + 1\n  FROM folders f\n  JOIN crumb c ON f.id = c.parent_id\n)\nSELECT id, name, depth FROM crumb ORDER BY depth DESC"};
+const getBreadcrumbIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"params":[{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":95,"b":103}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":120,"b":127}]}],"statement":"WITH RECURSIVE crumb AS (\n  SELECT id, parent_id, name, 0 AS depth\n  FROM folders\n  WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL\n  UNION ALL\n  SELECT f.id, f.parent_id, f.name, c.depth + 1\n  FROM folders f\n  JOIN crumb c ON f.id = c.parent_id\n)\nSELECT id, name, depth FROM crumb ORDER BY depth DESC"};
 
 /**
  * Query generated from SQL:
@@ -277,7 +277,7 @@ const getBreadcrumbIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"p
  * WITH RECURSIVE crumb AS (
  *   SELECT id, parent_id, name, 0 AS depth
  *   FROM folders
- *   WHERE id = :folderId AND owner_id = :ownerId
+ *   WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL
  *   UNION ALL
  *   SELECT f.id, f.parent_id, f.name, c.depth + 1
  *   FROM folders f
@@ -306,15 +306,15 @@ export interface IGetDescendantFolderIdsQuery {
   result: IGetDescendantFolderIdsResult;
 }
 
-const getDescendantFolderIdsIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"params":[{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":64,"b":72}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":89,"b":96}]}],"statement":"WITH RECURSIVE subtree AS (\n  SELECT id FROM folders WHERE id = :folderId AND owner_id = :ownerId\n  UNION ALL\n  SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id\n)\nSELECT id FROM subtree"};
+const getDescendantFolderIdsIR: any = {"usedParamSet":{"folderId":true,"ownerId":true},"params":[{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":64,"b":72}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":89,"b":96}]}],"statement":"WITH RECURSIVE subtree AS (\n  SELECT id FROM folders WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL\n  UNION ALL\n  SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id AND f.trashed_at IS NULL\n)\nSELECT id FROM subtree"};
 
 /**
  * Query generated from SQL:
  * ```
  * WITH RECURSIVE subtree AS (
- *   SELECT id FROM folders WHERE id = :folderId AND owner_id = :ownerId
+ *   SELECT id FROM folders WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL
  *   UNION ALL
- *   SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id
+ *   SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id AND f.trashed_at IS NULL
  * )
  * SELECT id FROM subtree
  * ```

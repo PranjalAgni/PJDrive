@@ -3,6 +3,7 @@ import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
 import { SharedWithMe } from './pages/SharedWithMe';
+import { Trash } from './pages/Trash';
 import { useAuthStore } from './store/auth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export function App() {
         <Route path="/register" element={<AnonymousRoute><Register /></AnonymousRoute>} />
         <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
         <Route path="/shared" element={<ProtectedRoute><SharedWithMe /></ProtectedRoute>} />
+        <Route path="/trash" element={<ProtectedRoute><Trash /></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>
   );

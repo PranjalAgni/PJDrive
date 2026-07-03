@@ -150,7 +150,7 @@ describe('PATCH /folders/:id', () => {
 });
 
 describe('DELETE /folders/:id', () => {
-  it('deletes folder and moves contained files to root', async () => {
+  it('soft-deletes folder and trashes contained files (cascade)', async () => {
     const f = await request(app).post('/folders').set(auth(token)).send({ name: 'ToDelete' });
     const { rows } = await pool.query(
       "INSERT INTO files (owner_id, name, storage_key, checksum, folder_id) VALUES ($1,'orphan.txt','k2','c2',$2) RETURNING id",
@@ -161,8 +161,12 @@ describe('DELETE /folders/:id', () => {
     const res = await request(app).delete(`/folders/${f.body.folder.id}`).set(auth(token));
     expect(res.status).toBe(204);
 
-    const check = await pool.query('SELECT folder_id FROM files WHERE id=$1', [orphanId]);
-    expect(check.rows[0].folder_id).toBeNull();
+    // The folder is trashed, not gone; its file is trashed too (still in the folder).
+    const folderCheck = await pool.query('SELECT trashed_at FROM folders WHERE id=$1', [f.body.folder.id]);
+    expect(folderCheck.rows[0].trashed_at).not.toBeNull();
+    const fileCheck = await pool.query('SELECT folder_id, trashed_at FROM files WHERE id=$1', [orphanId]);
+    expect(fileCheck.rows[0].trashed_at).not.toBeNull();
+    expect(fileCheck.rows[0].folder_id).toBe(f.body.folder.id);
   });
 
   it('404 deleting another user folder', async () => {

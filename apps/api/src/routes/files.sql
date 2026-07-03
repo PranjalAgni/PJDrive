@@ -1,13 +1,13 @@
 /* @name ListFilesByOwner */
 SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
 FROM files
-WHERE owner_id = :ownerId
+WHERE owner_id = :ownerId AND trashed_at IS NULL
 ORDER BY created_at DESC;
 
 /* @name GetFileByIdAndOwner */
 SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
 FROM files
-WHERE id = :fileId AND owner_id = :ownerId;
+WHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL;
 
 /* @name UpdateFile */
 UPDATE files
@@ -21,6 +21,7 @@ RETURNING id, owner_id, name, mime_type, size_bytes, checksum, folder_id, create
 SELECT f.id, f.name, f.mime_type, f.size_bytes, f.checksum, f.created_at, f.updated_at
 FROM files f
 WHERE f.id = :fileId
+  AND f.trashed_at IS NULL
   AND (
     f.owner_id = :userId
     OR EXISTS (
@@ -35,12 +36,13 @@ WHERE f.id = :fileId
 /* @name GetFileStorageKey */
 SELECT storage_key
 FROM files
-WHERE id = :fileId AND owner_id = :ownerId;
+WHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL;
 
 /* @name GetFileStorageKeyWithAccess */
 SELECT f.storage_key
 FROM files f
 WHERE f.id = :fileId
+  AND f.trashed_at IS NULL
   AND (
     f.owner_id = :userId
     OR EXISTS (

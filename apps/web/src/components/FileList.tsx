@@ -50,12 +50,11 @@ export function FileList({ refresh, currentFolderId, onNavigate, onRefresh, rend
   }
 
   async function handleDeleteFile(file: DriveFile) {
-    if (!confirm(`Delete ${file.name}?`)) return;
     try {
       await apiClient.delete(`/files/${file.id}`);
       setFiles((prev) => prev.filter((f) => f.id !== file.id));
     } catch {
-      alert(`Failed to delete ${file.name}`);
+      alert(`Failed to trash ${file.name}`);
     }
   }
 
@@ -71,12 +70,12 @@ export function FileList({ refresh, currentFolderId, onNavigate, onRefresh, rend
   }
 
   async function handleDeleteFolder(folder: Folder) {
-    if (!confirm(`Delete folder "${folder.name}"? Its files will be moved to root.`)) return;
+    if (!confirm(`Move folder "${folder.name}" to Trash?`)) return;
     try {
       await apiClient.delete(`/folders/${folder.id}`);
       onRefresh();
     } catch (err: any) {
-      alert(err.response?.data?.error || `Failed to delete ${folder.name}`);
+      alert(err.response?.data?.error || `Failed to trash ${folder.name}`);
     }
   }
 
@@ -124,7 +123,7 @@ export function FileList({ refresh, currentFolderId, onNavigate, onRefresh, rend
                 <td>
                   <button onClick={() => handleRenameFolder(folder)} style={{ marginRight: 8 }}>Rename</button>
                   <button onClick={() => setMovingItem({ type: 'folder', id: folder.id, name: folder.name })} style={{ marginRight: 8 }}>Move</button>
-                  <button onClick={() => handleDeleteFolder(folder)}>Delete</button>
+                  <button onClick={() => handleDeleteFolder(folder)}>Trash</button>
                 </td>
               </tr>
             ))}
@@ -137,7 +136,7 @@ export function FileList({ refresh, currentFolderId, onNavigate, onRefresh, rend
                   <button onClick={() => setSharingFile(f)} style={{ marginRight: 8 }}>Share</button>
                   <button onClick={() => handleDownload(f)} style={{ marginRight: 8 }}>Download</button>
                   <button onClick={() => setMovingItem({ type: 'file', id: f.id, name: f.name })} style={{ marginRight: 8 }}>Move</button>
-                  <button onClick={() => handleDeleteFile(f)}>Delete</button>
+                  <button onClick={() => handleDeleteFile(f)}>Trash</button>
                 </td>
               </tr>
             ))}

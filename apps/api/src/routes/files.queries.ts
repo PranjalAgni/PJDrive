@@ -24,14 +24,14 @@ export interface IListFilesByOwnerQuery {
   result: IListFilesByOwnerResult;
 }
 
-const listFilesByOwnerIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId\nORDER BY created_at DESC"};
+const listFilesByOwnerIR: any = {"usedParamSet":{"ownerId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":112,"b":119}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE owner_id = :ownerId AND trashed_at IS NULL\nORDER BY created_at DESC"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
  * FROM files
- * WHERE owner_id = :ownerId
+ * WHERE owner_id = :ownerId AND trashed_at IS NULL
  * ORDER BY created_at DESC
  * ```
  */
@@ -62,14 +62,14 @@ export interface IGetFileByIdAndOwnerQuery {
   result: IGetFileByIdAndOwnerResult;
 }
 
-const getFileByIdAndOwnerIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":106,"b":112}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":129,"b":136}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE id = :fileId AND owner_id = :ownerId"};
+const getFileByIdAndOwnerIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":106,"b":112}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":129,"b":136}]}],"statement":"SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at\nFROM files\nWHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
  * FROM files
- * WHERE id = :fileId AND owner_id = :ownerId
+ * WHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL
  * ```
  */
 export const getFileByIdAndOwner = new PreparedQuery<IGetFileByIdAndOwnerParams,IGetFileByIdAndOwnerResult>(getFileByIdAndOwnerIR);
@@ -142,7 +142,7 @@ export interface IGetFileByIdWithAccessQuery {
   result: IGetFileByIdWithAccessResult;
 }
 
-const getFileByIdWithAccessIR: any = {"usedParamSet":{"fileId":true,"userId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":113,"b":119}]},{"name":"userId","required":false,"transform":{"type":"scalar"},"locs":[{"a":146,"b":152},{"a":265,"b":271}]}],"statement":"SELECT f.id, f.name, f.mime_type, f.size_bytes, f.checksum, f.created_at, f.updated_at\nFROM files f\nWHERE f.id = :fileId\n  AND (\n    f.owner_id = :userId\n    OR EXISTS (\n      SELECT 1 FROM shared_files sf\n      WHERE sf.file_id = f.id\n        AND sf.shared_with = :userId\n        AND sf.share_type = 'user'\n        AND (sf.expires_at IS NULL OR sf.expires_at > NOW())\n    )\n  )"};
+const getFileByIdWithAccessIR: any = {"usedParamSet":{"fileId":true,"userId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":113,"b":119}]},{"name":"userId","required":false,"transform":{"type":"scalar"},"locs":[{"a":173,"b":179},{"a":292,"b":298}]}],"statement":"SELECT f.id, f.name, f.mime_type, f.size_bytes, f.checksum, f.created_at, f.updated_at\nFROM files f\nWHERE f.id = :fileId\n  AND f.trashed_at IS NULL\n  AND (\n    f.owner_id = :userId\n    OR EXISTS (\n      SELECT 1 FROM shared_files sf\n      WHERE sf.file_id = f.id\n        AND sf.shared_with = :userId\n        AND sf.share_type = 'user'\n        AND (sf.expires_at IS NULL OR sf.expires_at > NOW())\n    )\n  )"};
 
 /**
  * Query generated from SQL:
@@ -150,6 +150,7 @@ const getFileByIdWithAccessIR: any = {"usedParamSet":{"fileId":true,"userId":tru
  * SELECT f.id, f.name, f.mime_type, f.size_bytes, f.checksum, f.created_at, f.updated_at
  * FROM files f
  * WHERE f.id = :fileId
+ *   AND f.trashed_at IS NULL
  *   AND (
  *     f.owner_id = :userId
  *     OR EXISTS (
@@ -182,14 +183,14 @@ export interface IGetFileStorageKeyQuery {
   result: IGetFileStorageKeyResult;
 }
 
-const getFileStorageKeyIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":41,"b":47}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":64,"b":71}]}],"statement":"SELECT storage_key\nFROM files\nWHERE id = :fileId AND owner_id = :ownerId"};
+const getFileStorageKeyIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":41,"b":47}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":64,"b":71}]}],"statement":"SELECT storage_key\nFROM files\nWHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL"};
 
 /**
  * Query generated from SQL:
  * ```
  * SELECT storage_key
  * FROM files
- * WHERE id = :fileId AND owner_id = :ownerId
+ * WHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL
  * ```
  */
 export const getFileStorageKey = new PreparedQuery<IGetFileStorageKeyParams,IGetFileStorageKeyResult>(getFileStorageKeyIR);
@@ -212,7 +213,7 @@ export interface IGetFileStorageKeyWithAccessQuery {
   result: IGetFileStorageKeyWithAccessResult;
 }
 
-const getFileStorageKeyWithAccessIR: any = {"usedParamSet":{"fileId":true,"userId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":47,"b":53}]},{"name":"userId","required":false,"transform":{"type":"scalar"},"locs":[{"a":80,"b":86},{"a":199,"b":205}]}],"statement":"SELECT f.storage_key\nFROM files f\nWHERE f.id = :fileId\n  AND (\n    f.owner_id = :userId\n    OR EXISTS (\n      SELECT 1 FROM shared_files sf\n      WHERE sf.file_id = f.id\n        AND sf.shared_with = :userId\n        AND sf.share_type = 'user'\n        AND (sf.expires_at IS NULL OR sf.expires_at > NOW())\n    )\n  )"};
+const getFileStorageKeyWithAccessIR: any = {"usedParamSet":{"fileId":true,"userId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":47,"b":53}]},{"name":"userId","required":false,"transform":{"type":"scalar"},"locs":[{"a":107,"b":113},{"a":226,"b":232}]}],"statement":"SELECT f.storage_key\nFROM files f\nWHERE f.id = :fileId\n  AND f.trashed_at IS NULL\n  AND (\n    f.owner_id = :userId\n    OR EXISTS (\n      SELECT 1 FROM shared_files sf\n      WHERE sf.file_id = f.id\n        AND sf.shared_with = :userId\n        AND sf.share_type = 'user'\n        AND (sf.expires_at IS NULL OR sf.expires_at > NOW())\n    )\n  )"};
 
 /**
  * Query generated from SQL:
@@ -220,6 +221,7 @@ const getFileStorageKeyWithAccessIR: any = {"usedParamSet":{"fileId":true,"userI
  * SELECT f.storage_key
  * FROM files f
  * WHERE f.id = :fileId
+ *   AND f.trashed_at IS NULL
  *   AND (
  *     f.owner_id = :userId
  *     OR EXISTS (

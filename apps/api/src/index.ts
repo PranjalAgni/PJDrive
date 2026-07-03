@@ -9,6 +9,8 @@ import { sharedWithMeRouter } from './routes/sharedWithMe';
 import { syncRouter } from './routes/sync';
 import { statsRouter } from './routes/stats';
 import { foldersRouter } from './routes/folders';
+import { trashRouter } from './routes/trash';
+import { purgeTrash } from './purge';
 import { pool } from './db';
 import { resolveShareToken } from './index.queries';
 
@@ -40,6 +42,7 @@ app.use('/upload', uploadRouter);
 app.use('/sync', syncRouter);
 app.use('/stats', statsRouter);
 app.use('/folders', foldersRouter);
+app.use('/trash', trashRouter);
 
 app.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
   res.json({ userId: req.userId });
@@ -53,4 +56,8 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 if (require.main === module) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => console.log(`API running on port ${PORT}`));
+  // Auto-purge trash older than 30 days, every 6 hours.
+  setInterval(() => {
+    purgeTrash().catch((e) => console.error('purge interval error:', e));
+  }, 6 * 60 * 60 * 1000);
 }

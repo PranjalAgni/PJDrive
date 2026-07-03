@@ -6,43 +6,43 @@ RETURNING id, owner_id, parent_id, name, created_at, updated_at;
 /* @name GetFolderByIdAndOwner */
 SELECT id, owner_id, parent_id, name, created_at, updated_at
 FROM folders
-WHERE id = :folderId AND owner_id = :ownerId;
+WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL;
 
 /* @name ListSubfoldersRoot */
 SELECT id, owner_id, parent_id, name, created_at, updated_at
 FROM folders
-WHERE owner_id = :ownerId AND parent_id IS NULL
+WHERE owner_id = :ownerId AND parent_id IS NULL AND trashed_at IS NULL
 ORDER BY name ASC;
 
 /* @name ListSubfoldersInParent */
 SELECT id, owner_id, parent_id, name, created_at, updated_at
 FROM folders
-WHERE owner_id = :ownerId AND parent_id = :parentId
+WHERE owner_id = :ownerId AND parent_id = :parentId AND trashed_at IS NULL
 ORDER BY name ASC;
 
 /* @name ListAllFoldersByOwner */
 SELECT id, parent_id, name
 FROM folders
-WHERE owner_id = :ownerId
+WHERE owner_id = :ownerId AND trashed_at IS NULL
 ORDER BY name ASC;
 
 /* @name ListFilesInFolderRoot */
 SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
 FROM files
-WHERE owner_id = :ownerId AND folder_id IS NULL
+WHERE owner_id = :ownerId AND folder_id IS NULL AND trashed_at IS NULL
 ORDER BY created_at DESC;
 
 /* @name ListFilesInFolder */
 SELECT id, name, mime_type, size_bytes, checksum, folder_id, created_at, updated_at
 FROM files
-WHERE owner_id = :ownerId AND folder_id = :folderId
+WHERE owner_id = :ownerId AND folder_id = :folderId AND trashed_at IS NULL
 ORDER BY created_at DESC;
 
 /* @name GetBreadcrumb */
 WITH RECURSIVE crumb AS (
   SELECT id, parent_id, name, 0 AS depth
   FROM folders
-  WHERE id = :folderId AND owner_id = :ownerId
+  WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL
   UNION ALL
   SELECT f.id, f.parent_id, f.name, c.depth + 1
   FROM folders f
@@ -52,9 +52,9 @@ SELECT id, name, depth FROM crumb ORDER BY depth DESC;
 
 /* @name GetDescendantFolderIds */
 WITH RECURSIVE subtree AS (
-  SELECT id FROM folders WHERE id = :folderId AND owner_id = :ownerId
+  SELECT id FROM folders WHERE id = :folderId AND owner_id = :ownerId AND trashed_at IS NULL
   UNION ALL
-  SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id
+  SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id AND f.trashed_at IS NULL
 )
 SELECT id FROM subtree;
 

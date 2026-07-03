@@ -5,5 +5,6 @@ JOIN files f ON f.id = sf.file_id
 JOIN users u ON u.id = sf.owner_id
 WHERE sf.shared_with = :userId
   AND sf.share_type = 'user'
+  AND f.trashed_at IS NULL
   AND (sf.expires_at IS NULL OR sf.expires_at > NOW())
 ORDER BY f.created_at DESC;

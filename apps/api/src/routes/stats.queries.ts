@@ -18,7 +18,7 @@ export interface IGetUserStatsQuery {
   result: IGetUserStatsResult;
 }
 
-const getUserStatsIR: any = {"usedParamSet":{"userId":true},"params":[{"name":"userId","required":false,"transform":{"type":"scalar"},"locs":[{"a":120,"b":126}]}],"statement":"SELECT\n  COUNT(*)::int AS file_count,\n  COALESCE(SUM(size_bytes), 0)::bigint AS total_bytes\nFROM files\nWHERE owner_id = :userId"};
+const getUserStatsIR: any = {"usedParamSet":{"userId":true},"params":[{"name":"userId","required":false,"transform":{"type":"scalar"},"locs":[{"a":120,"b":126}]}],"statement":"SELECT\n  COUNT(*)::int AS file_count,\n  COALESCE(SUM(size_bytes), 0)::bigint AS total_bytes\nFROM files\nWHERE owner_id = :userId AND trashed_at IS NULL"};
 
 /**
  * Query generated from SQL:
@@ -27,7 +27,7 @@ const getUserStatsIR: any = {"usedParamSet":{"userId":true},"params":[{"name":"u
  *   COUNT(*)::int AS file_count,
  *   COALESCE(SUM(size_bytes), 0)::bigint AS total_bytes
  * FROM files
- * WHERE owner_id = :userId
+ * WHERE owner_id = :userId AND trashed_at IS NULL
  * ```
  */
 export const getUserStats = new PreparedQuery<IGetUserStatsParams,IGetUserStatsResult>(getUserStatsIR);

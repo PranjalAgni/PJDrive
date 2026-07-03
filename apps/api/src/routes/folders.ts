@@ -13,8 +13,8 @@ import {
   getBreadcrumb,
   getDescendantFolderIds,
   updateFolder,
-  deleteFolderCascade,
 } from './folders.queries';
+import { trashFolderSubtreeFolders, trashFolderSubtreeFiles } from './trash.queries';
 
 export const foldersRouter = Router();
 
@@ -122,16 +122,30 @@ foldersRouter.patch('/:id', requireAuth, async (req: AuthRequest, res) => {
   }
 });
 
-// DELETE /folders/:id — hard-delete (files cascade to root via ON DELETE SET NULL).
-// Becomes a soft-delete in Plan B (Trash).
+// DELETE /folders/:id — soft-delete + cascade. The folder and its entire
+// subtree (folders + files) are trashed with one shared timestamp so they
+// can be restored together.
 foldersRouter.delete('/:id', requireAuth, async (req: AuthRequest, res) => {
   try {
     const own = await getFolderByIdAndOwner.run({ folderId: req.params.id, ownerId: req.userId! }, pool);
     if (own.length === 0) return res.status(404).json({ error: 'folder not found' });
-    await deleteFolderCascade.run({ folderId: req.params.id, ownerId: req.userId! }, pool);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const now = (await client.query('SELECT NOW() AS now')).rows[0].now;
+      await trashFolderSubtreeFolders.run({ folderId: req.params.id, ownerId: req.userId!, trashedAt: now }, client);
+      await trashFolderSubtreeFiles.run({ folderId: req.params.id, ownerId: req.userId!, trashedAt: now }, client);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
     return res.status(204).send();
   } catch (err) {
-    console.error('folder delete error:', err);
+    console.error('folder trash error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });
