@@ -74,6 +74,16 @@ export const UpdateFileBody = z
     message: 'name or folderId required',
   });
 
+// ─── Search ──────────────────────────────────────────────────────────────────
+
+export const SearchQuery = z.object({
+  q: z.string().min(1, { message: 'q required' }).max(200),
+  type: z.string().max(100).optional(),
+  after: z.iso.datetime({ message: 'after must be ISO' }).optional(),
+  before: z.iso.datetime({ message: 'before must be ISO' }).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 // ─── Sync ────────────────────────────────────────────────────────────────────
 
 export const SyncChangesQuery = z.object({
@@ -89,6 +99,7 @@ export type CompleteUploadBodyType = z.infer<typeof CompleteUploadBody>;
 export type ShareUserBodyType = z.infer<typeof ShareUserBody>;
 export type ShareLinkBodyType = z.infer<typeof ShareLinkBody>;
 export type SyncChangesQueryType = z.infer<typeof SyncChangesQuery>;
+export type SearchQueryType = z.infer<typeof SearchQuery>;
 export type CreateFolderBodyType = z.infer<typeof CreateFolderBody>;
 export type UpdateFolderBodyType = z.infer<typeof UpdateFolderBody>;
 export type UpdateFileBodyType = z.infer<typeof UpdateFileBody>;

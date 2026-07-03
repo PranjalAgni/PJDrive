@@ -10,6 +10,7 @@ import { syncRouter } from './routes/sync';
 import { statsRouter } from './routes/stats';
 import { foldersRouter } from './routes/folders';
 import { trashRouter } from './routes/trash';
+import { searchRouter } from './routes/search';
 import { purgeTrash } from './purge';
 import { pool } from './db';
 import { resolveShareToken } from './index.queries';
@@ -43,6 +44,7 @@ app.use('/sync', syncRouter);
 app.use('/stats', statsRouter);
 app.use('/folders', foldersRouter);
 app.use('/trash', trashRouter);
+app.use('/search', searchRouter);
 
 app.get('/auth/me', requireAuth, (req: AuthRequest, res) => {
   res.json({ userId: req.userId });
