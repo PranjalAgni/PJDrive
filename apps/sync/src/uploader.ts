@@ -60,7 +60,7 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
   let resumed = false;
   if (pending && pending.checksum === checksum) {
     try {
-      const { data: status } = await getApi().get(`/upload/status/${pending.uploadId}`);
+      const { data: status } = await getApi().get(`/upload/status/${pending.uploadId}?presign=1`);
       if (status.status === 'in_progress') {
         uploadId = pending.uploadId;
         chunkUrls = status.chunkUrls;

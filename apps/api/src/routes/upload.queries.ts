@@ -107,7 +107,7 @@ export const getUploadStatus = new PreparedQuery<IGetUploadStatusParams,IGetUplo
 export interface IRecordChunkParams {
   chunkEntry?: string | null | void;
   ownerId?: string | null | void;
-  partNumber?: string | null | void;
+  partNumber?: number | null | void;
   uploadId?: string | null | void;
 }
 
@@ -122,7 +122,7 @@ export interface IRecordChunkQuery {
   result: IRecordChunkResult;
 }
 
-const recordChunkIR: any = {"usedParamSet":{"partNumber":true,"chunkEntry":true,"uploadId":true,"ownerId":true},"params":[{"name":"partNumber","required":false,"transform":{"type":"scalar"},"locs":[{"a":181,"b":191}]},{"name":"chunkEntry","required":false,"transform":{"type":"scalar"},"locs":[{"a":207,"b":217}]},{"name":"uploadId","required":false,"transform":{"type":"scalar"},"locs":[{"a":237,"b":245}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":262,"b":269}]}],"statement":"UPDATE uploads\nSET uploaded_chunks = (\n  SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)\n  FROM jsonb_array_elements_text(uploaded_chunks) AS elem\n  WHERE split_part(elem, ':', 1) <> :partNumber\n) || to_jsonb(:chunkEntry::text)\nWHERE id = :uploadId AND owner_id = :ownerId AND status = 'in_progress'\nRETURNING id"};
+const recordChunkIR: any = {"usedParamSet":{"partNumber":true,"chunkEntry":true,"uploadId":true,"ownerId":true},"params":[{"name":"partNumber","required":false,"transform":{"type":"scalar"},"locs":[{"a":186,"b":196},{"a":309,"b":319}]},{"name":"chunkEntry","required":false,"transform":{"type":"scalar"},"locs":[{"a":212,"b":222}]},{"name":"uploadId","required":false,"transform":{"type":"scalar"},"locs":[{"a":242,"b":250}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":267,"b":274}]}],"statement":"UPDATE uploads\nSET uploaded_chunks = (\n  SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)\n  FROM jsonb_array_elements_text(uploaded_chunks) AS elem\n  WHERE split_part(elem, ':', 1)::int <> :partNumber\n) || to_jsonb(:chunkEntry::text)\nWHERE id = :uploadId AND owner_id = :ownerId AND status = 'in_progress'\n  AND :partNumber BETWEEN 1 AND total_chunks\nRETURNING id"};
 
 /**
  * Query generated from SQL:
@@ -131,9 +131,10 @@ const recordChunkIR: any = {"usedParamSet":{"partNumber":true,"chunkEntry":true,
  * SET uploaded_chunks = (
  *   SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
  *   FROM jsonb_array_elements_text(uploaded_chunks) AS elem
- *   WHERE split_part(elem, ':', 1) <> :partNumber
+ *   WHERE split_part(elem, ':', 1)::int <> :partNumber
  * ) || to_jsonb(:chunkEntry::text)
  * WHERE id = :uploadId AND owner_id = :ownerId AND status = 'in_progress'
+ *   AND :partNumber BETWEEN 1 AND total_chunks
  * RETURNING id
  * ```
  */

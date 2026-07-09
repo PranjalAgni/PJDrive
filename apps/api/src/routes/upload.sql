@@ -18,9 +18,10 @@ UPDATE uploads
 SET uploaded_chunks = (
   SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
   FROM jsonb_array_elements_text(uploaded_chunks) AS elem
-  WHERE split_part(elem, ':', 1) <> :partNumber
+  WHERE split_part(elem, ':', 1)::int <> :partNumber
 ) || to_jsonb(:chunkEntry::text)
 WHERE id = :uploadId AND owner_id = :ownerId AND status = 'in_progress'
+  AND :partNumber BETWEEN 1 AND total_chunks
 RETURNING id;
 
 /* @name GetUploadWithFile */

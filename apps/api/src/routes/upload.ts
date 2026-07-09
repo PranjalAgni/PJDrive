@@ -61,9 +61,11 @@ uploadRouter.get('/status/:uploadId', requireAuth, async (req: AuthRequest, res)
     const upload = rows[0];
     // Re-presign fresh chunk URLs so a resumed upload can PUT its remaining parts
     // even after the original init-time URLs have expired (they are never persisted client-side).
-    // Only meaningful while the upload is still in progress.
+    // Only meaningful while the upload is still in progress, and only for genuine
+    // resume callers that opt in via ?presign=1 - presigning every part is costly
+    // (up to 10,000 signatures) and pointless for callers that only poll progress.
     const chunkUrls: string[] = [];
-    if (upload.status === 'in_progress') {
+    if (upload.status === 'in_progress' && req.query.presign === '1') {
       for (let i = 1; i <= upload.total_chunks; i++) {
         chunkUrls.push(await presignChunkUpload(upload.storage_key, upload.upload_id, i));
       }
@@ -87,11 +89,29 @@ uploadRouter.post('/chunk', requireAuth, async (req: AuthRequest, res) => {
     if (!parsed.ok) return;
     const { uploadId, partNumber, eTag } = parsed.data;
 
+    const uploadRows = await getUploadWithFile.run({ uploadId, ownerId: req.userId! }, pool);
+    // No row => upload doesn't exist or isn't owned by this user.
+    if (uploadRows.length === 0) return res.status(404).json({ error: 'upload not found' });
+
+    const upload = uploadRows[0];
+    if (upload.status !== 'in_progress') {
+      return res.status(409).json({ error: 'upload not in progress' });
+    }
+    // Reject parts outside the declared range so a client cannot record a bogus
+    // high part that was never PUT to S3, which would later fail completion.
+    if (partNumber > upload.total_chunks) {
+      return res.status(400).json({
+        error: 'partNumber out of range',
+        partNumber,
+        totalChunks: upload.total_chunks,
+      });
+    }
+
     const rows = await recordChunk.run(
       {
         uploadId,
         ownerId: req.userId!,
-        partNumber: String(partNumber),
+        partNumber,
         chunkEntry: `${partNumber}:${eTag}`,
       },
       pool,
@@ -144,9 +164,13 @@ uploadRouter.post('/complete', requireAuth, async (req: AuthRequest, res) => {
       });
     }
 
-    const parts = Array.from(recorded.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([partNumber, eTag]) => ({ partNumber, eTag }));
+    // Build the manifest strictly from in-range parts 1..total_chunks (already
+    // proven present above) so a stray recorded part beyond total_chunks can
+    // never be sent to S3, which would otherwise reject the whole completion.
+    const parts: { partNumber: number; eTag: string }[] = [];
+    for (let i = 1; i <= upload.total_chunks; i++) {
+      parts.push({ partNumber: i, eTag: recorded.get(i)! });
+    }
 
     await completeMultipart(
       upload.storage_key,

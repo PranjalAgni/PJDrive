@@ -44,7 +44,7 @@ describe('E2E resumable multipart', () => {
     // --- RESUME: read status, see part 1 already done, and get FRESH chunk URLs ---
     // This mirrors what a real client does after a crash: the init-time URLs are gone,
     // so it re-presigns the remaining parts via /upload/status.
-    const status = await request(app).get(`/upload/status/${uploadId}`).set('Authorization', `Bearer ${token}`);
+    const status = await request(app).get(`/upload/status/${uploadId}?presign=1`).set('Authorization', `Bearer ${token}`);
     expect(status.body.uploadedChunks).toEqual([`1:${etag1}`]);
     expect(status.body.status).toBe('in_progress');
     expect(status.body.chunkUrls).toHaveLength(2);

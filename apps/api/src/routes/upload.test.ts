@@ -56,11 +56,29 @@ describe('GET /upload/status/:uploadId', () => {
     expect(res.body.totalChunks).toBe(1);
   });
 
-  it('returns fresh presigned chunk URLs for an in-progress upload so a resume can re-PUT parts', async () => {
+  it('returns fresh presigned chunk URLs for an in-progress upload when a resume opts in via ?presign=1', async () => {
     const initRes = await request(app)
       .post('/upload/init')
       .set('Authorization', `Bearer ${token}`)
       .send({ fileName: 'resume-urls.txt', mimeType: 'text/plain', sizeBytes: 3 * 10485760, totalChunks: 3, checksum: 'urls123' });
+
+    const { uploadId } = initRes.body;
+
+    const res = await request(app)
+      .get(`/upload/status/${uploadId}?presign=1`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('in_progress');
+    expect(res.body.chunkUrls).toHaveLength(3);
+    expect(res.body.chunkUrls[0]).toContain('partNumber=1');
+  });
+
+  it('does not presign chunk URLs when the caller only polls progress (no ?presign flag)', async () => {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'poll-only.txt', mimeType: 'text/plain', sizeBytes: 3 * 10485760, totalChunks: 3, checksum: 'poll123' });
 
     const { uploadId } = initRes.body;
 
@@ -70,8 +88,7 @@ describe('GET /upload/status/:uploadId', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('in_progress');
-    expect(res.body.chunkUrls).toHaveLength(3);
-    expect(res.body.chunkUrls[0]).toContain('partNumber=1');
+    expect(res.body.chunkUrls).toEqual([]);
   });
 });
 
@@ -121,6 +138,23 @@ describe('POST /upload/chunk', () => {
       .get(`/upload/status/${uploadId}`)
       .set('Authorization', `Bearer ${token}`);
     expect(statusRes.body.uploadedChunks).toEqual(['1:"etag-dup"']);
+  });
+
+  it('rejects a partNumber greater than the upload\'s total_chunks', async () => {
+    const uploadId = await initUpload(2);
+
+    const chunkRes = await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 5, eTag: '"etag-oob"' });
+    expect(chunkRes.status).toBe(400);
+    expect(chunkRes.body.error).toBe('partNumber out of range');
+
+    // The out-of-range part must not have been recorded.
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.uploadedChunks).toEqual([]);
   });
 
   it('rejects recording a chunk for another user\'s upload', async () => {
