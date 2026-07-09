@@ -8,6 +8,7 @@ import {
   setPendingUpload,
   clearPendingUpload,
 } from './state';
+import { withRetry } from './retry';
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 let currentToken = process.env.SYNC_TOKEN || '';
@@ -99,13 +100,19 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
       const chunkBuf = Buffer.allocUnsafe(end - start);
       fs.readSync(fd, chunkBuf, 0, end - start, start);
 
-      const res = await axios.put(chunkUrls![i], chunkBuf, {
-        headers: { 'Content-Type': 'application/octet-stream' },
-      });
-      const eTag = res.headers.etag;
-      if (!eTag) throw new Error(`Missing ETag for chunk ${partNumber} of ${fileName}`);
-      // Persist the completed chunk so a later retry can resume instead of re-uploading it.
-      await getApi().post('/upload/chunk', { uploadId: uploadId!, partNumber, eTag });
+      // Retry a transient chunk failure in place so one network blip retries
+      // only this part rather than bubbling up and aborting the file. A crash
+      // that outlasts the retries still resumes from the last recorded chunk.
+      const eTag = await withRetry(async () => {
+        const res = await axios.put(chunkUrls![i], chunkBuf, {
+          headers: { 'Content-Type': 'application/octet-stream' },
+        });
+        const tag = res.headers.etag;
+        if (!tag) throw new Error(`Missing ETag for chunk ${partNumber} of ${fileName}`);
+        // Persist the completed chunk so a later retry can resume instead of re-uploading it.
+        await getApi().post('/upload/chunk', { uploadId: uploadId!, partNumber, eTag: tag });
+        return tag;
+      }, { onRetry: (attempt, err) => console.warn(`[sync] chunk ${partNumber}/${totalChunks} of ${fileName} failed (attempt ${attempt}), retrying:`, err instanceof Error ? err.message : err) });
       parts.push({ partNumber, eTag });
       console.log(`[sync] uploaded chunk ${partNumber}/${totalChunks} of ${fileName}`);
     }

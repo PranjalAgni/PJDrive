@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { apiClient } from '../api/client';
 import { splitIntoChunks, computeChecksum } from './chunker';
+import { withRetry } from './retry';
 
 const PARALLEL_CHUNK_UPLOADS = 3;
 
@@ -54,14 +55,19 @@ export async function uploadFile(
         const partNumber = i + j + 1;
         if (alreadyUploadedNumbers.includes(partNumber)) return null;
 
-        const res = await axios.put(chunkUrls[i + j], chunk, {
-          headers: { 'Content-Type': 'application/octet-stream' },
+        // Retry a transient chunk failure in place so one network blip retries
+        // only this part instead of aborting the whole upload (the browser
+        // client cannot resume across a page reload).
+        return withRetry(async () => {
+          const res = await axios.put(chunkUrls[i + j], chunk, {
+            headers: { 'Content-Type': 'application/octet-stream' },
+          });
+          const eTag = res.headers.etag;
+          if (!eTag) throw new Error(`Missing ETag header for chunk ${partNumber}. Check S3 CORS ExposeHeaders config.`);
+          // Persist the completed chunk so a later retry can resume instead of re-uploading it.
+          await apiClient.post('/upload/chunk', { uploadId, partNumber, eTag });
+          return { partNumber, eTag };
         });
-        const eTag = res.headers.etag;
-        if (!eTag) throw new Error(`Missing ETag header for chunk ${partNumber}. Check S3 CORS ExposeHeaders config.`);
-        // Persist the completed chunk so a later retry can resume instead of re-uploading it.
-        await apiClient.post('/upload/chunk', { uploadId, partNumber, eTag });
-        return { partNumber, eTag };
       })
     );
 
