@@ -427,32 +427,40 @@ authRouter.post('/login', async (req, res) => {
 
 **What it is:** When you need two things to happen atomically — a database write and a side effect — do the DB write first inside a transaction, and trigger the side effect only after the transaction commits.
 
-**Where it appears:** `apps/api/src/routes/files.ts` DELETE handler
+**Where it appears:** `apps/api/src/routes/trash.ts` permanent-delete handler
+
+`DELETE /files/:id` is now a soft delete (it just sets `trashed_at`). The transactional outbox lives in the Trash permanent-delete path, where the row is actually removed and the S3 object is freed:
 
 ```typescript
-// apps/api/src/routes/files.ts
+// apps/api/src/routes/trash.ts
 const client = await pool.connect();
 try {
   await client.query('BEGIN');
 
   // 1. Write to DB inside transaction
   await insertSyncLogDeleted.run({ userId: req.userId!, fileId: req.params.id }, client);
-  await client.query('DELETE FROM files WHERE id=$1', [req.params.id]);
+  await hardDeleteFile.run({ fileId: req.params.id, ownerId: req.userId! }, client);
 
   await client.query('COMMIT');
+} catch (e) {
+  await client.query('ROLLBACK');
+  throw e;
+} finally {
+  client.release();
+}
 
-  // 2. Side effects AFTER commit — only if transaction succeeded
-  broadcastSyncEvent(req.userId!, { fileId: req.params.id, eventType: 'deleted' });
+// 2. Side effects AFTER commit — only if transaction succeeded
+broadcastSyncEvent(req.userId!, { fileId: req.params.id, eventType: 'deleted' });
 
-  try {
-    await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: storageKey }));
-  } catch (s3Err) {
-    // S3 failure logged but DB is already consistent — file row is gone
-    console.error('files delete S3 error (DB already committed):', s3Err);
-  }
+try {
+  await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: keys[0].storage_key }));
+} catch (s3Err) {
+  // S3 failure logged but DB is already consistent — file row is gone
+  console.error('trash permanent-delete S3 error (DB committed):', s3Err);
+}
 ```
 
-The `sync_log` INSERT happens before the `DELETE` (FK constraint requires the file row to exist at commit). The SSE broadcast and S3 deletion happen after `COMMIT`, so they only fire if the database transaction succeeded.
+The `sync_log` INSERT happens before the hard `DELETE` (FK constraint requires the file row to exist at commit). The SSE broadcast and S3 deletion happen after `COMMIT`, so they only fire if the database transaction succeeded.
 
 **Why:** If the transaction rolls back (DB error), the SSE broadcast and S3 deletion never happen. The system stays consistent — no phantom "deleted" events for files that weren't actually deleted.
 

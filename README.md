@@ -1,6 +1,6 @@
 # PJDrive
 
-A full-stack Google Drive clone built as a learning project. Covers chunked file upload, file sharing, real-time sync, and typed SQL — all in a Turborepo monorepo.
+A full-stack Google Drive clone built as a learning project. Covers chunked file upload, file sharing, nested folders, trash, search, real-time sync, and typed SQL — all in a Turborepo monorepo.
 
 ![Architecture](https://github.com/user-attachments/assets/1d589f7a-a2a3-43a9-9193-1ab992bd00e4)
 
@@ -10,8 +10,8 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 
 | App / Package | Description |
 |---|---|
-| `apps/api` | Node.js + Express API — auth, upload, files, sharing, sync SSE |
-| `apps/web` | React + Vite frontend — dashboard, upload UI, sharing, sync |
+| `apps/api` | Node.js + Express API — auth, upload, files, folders, trash, search, sharing, sync SSE |
+| `apps/web` | React + Vite frontend — dashboard, upload UI, folders, trash, search, sharing, sync |
 | `apps/sync` | Node.js sync client — watches `sync-folder/`, syncs via SSE |
 | `apps/desktop` | Electron desktop app — login, sync status, activity feed |
 | `packages/shared` | Shared TypeScript types across all apps |
@@ -24,7 +24,10 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **Chunked resumable upload** — files split into 10MB chunks, SHA-256 checksum, uploaded directly to S3/MinIO via presigned URLs (API never proxies bytes)
 - **Resume support** — interrupted uploads resume from the last successful chunk, not from scratch
 - **Download** — short-lived presigned URLs, CDN-cacheable
-- **File management** — list, download, delete files from the dashboard
+- **File management** - list, download, rename, move, delete files from the dashboard
+- **Nested folders** - create folders inside folders, navigate the hierarchy, move files/folders between them, breadcrumb navigation; moving a folder into its own subtree is rejected
+- **Trash** - deletes are soft (moved to Trash); restore or permanently delete individual items, or empty the whole trash; deleting a folder trashes its entire subtree together and restore brings it back together; items are auto-purged after 30 days
+- **Search** - Postgres full-text (FTS) + `ILIKE` search over file and folder names, with optional mime-type and date-range filters; trashed items are excluded
 - **Sharing by email** — share a file with another user as editor or viewer
 - **Public link sharing** — generate a shareable token URL; anyone with the link can access at the set role
 - **Access control** — owner → user share → link share → 403, checked on every file request
@@ -41,7 +44,8 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **JWT auth** — bcrypt password hashing, 7-day tokens, email normalisation
 - **Zod validation** — all request bodies validated at runtime with a central `schemas.ts`
 - **pgtyped** — all SQL lives in `.sql` files with named queries, fully typed TypeScript generated at codegen time
-- **Transactional deletes** — file row + sync_log written atomically; S3 object deleted after commit
+- **Soft delete + Trash** - file/folder deletes set `trashed_at` instead of removing rows; permanent delete writes sync_log + deletes the row atomically, then removes the S3 object after commit
+- **Auto-purge** - a background interval (every 6 hours) permanently removes trashed items older than 30 days; also runnable as a one-off script (`apps/api/src/purge.ts`)
 
 ### Electron desktop app
 - **Secure login** — email/password login with JWT stored encrypted in OS keychain via `safeStorage`
@@ -61,7 +65,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 | Monorepo | Turborepo |
 | API | Node.js, TypeScript, Express |
 | Frontend | React 18, Vite, Zustand, Axios |
-| Database | PostgreSQL (5 tables) |
+| Database | PostgreSQL (6 tables) |
 | Object storage | MinIO (local) / AWS S3 (prod) |
 | CDN | CloudFront (prod) |
 | Typed SQL | pgtyped |
@@ -214,21 +218,22 @@ Raycast and Spotlight will discover it automatically within seconds of copying t
 pjdrive/
 ├── apps/
 │   ├── api/
-│   │   ├── migrations/          # SQL schema (001–005)
+│   │   ├── migrations/          # SQL schema (001–009)
 │   │   ├── src/
-│   │   │   ├── routes/          # auth, upload, files, sharing, sync
+│   │   │   ├── routes/          # auth, upload, files, folders, trash, search, sharing, sync
 │   │   │   │   ├── *.ts         # route handlers
 │   │   │   │   ├── *.sql        # named pgtyped queries
 │   │   │   │   └── *.queries.ts # generated typed functions (don't edit)
 │   │   │   ├── middleware/      # requireAuth, requireFileAccess
 │   │   │   ├── db.ts            # pg Pool singleton
 │   │   │   ├── storage.ts       # S3Client + presigned URL helpers
+│   │   │   ├── purge.ts         # 30-day trash purge (interval + one-off script)
 │   │   │   └── config.ts        # JWT_SECRET, BCRYPT_ROUNDS
 │   │   └── pgtyped.config.json
 │   ├── web/
 │   │   └── src/
-│   │       ├── pages/           # Login, Register, Dashboard, SharedWithMe
-│   │       ├── components/      # FileList, Uploader, ShareModal
+│   │       ├── pages/           # Login, Register, Dashboard, SharedWithMe, Trash
+│   │       ├── components/      # FileList, Uploader, ShareModal, Breadcrumb, MoveModal, NewFolderButton, SearchBox, SearchResults
 │   │       ├── lib/             # chunker.ts, upload.ts
 │   │       ├── api/client.ts    # Axios instance + interceptors
 │   │       └── store/auth.ts    # Zustand auth store
@@ -253,11 +258,11 @@ pjdrive/
 │               ├── styles.css
 │               └── app.js       # screen routing, IPC calls, activity list
 ├── packages/
-│   └── shared/src/types.ts      # User, File, UploadJob, ShareRecord, SyncEvent
+│   └── shared/src/types.ts      # User, File, Folder, UploadJob, ShareRecord, SyncEvent
 ├── sync-folder/                 # watched directory (contents gitignored)
 └── docs/
-    ├── superpowers/specs/       # design spec
-    └── superpowers/plans/       # implementation plans (Plans 1–4 + pgtyped)
+    ├── superpowers/specs/       # design specs (incl. Folders/Trash/Search)
+    └── superpowers/plans/       # implementation plans (Plans 1–4 + pgtyped + Folders/Trash/Search)
 ```
 
 ---
@@ -266,11 +271,14 @@ pjdrive/
 
 ```
 users          — id, email, password_hash
-files          — id, owner_id, name, mime_type, size_bytes, storage_key, checksum
+folders        — id, owner_id, parent_id, name, trashed_at, created_at, updated_at
+files          — id, owner_id, folder_id, name, mime_type, size_bytes, storage_key, checksum, trashed_at
 uploads        — id, file_id, owner_id, upload_id, total_chunks, uploaded_chunks, status
 shared_files   — id, file_id, owner_id, shared_with, share_type, role, share_token, expires_at
 sync_log       — id, user_id, file_id, event_type, created_at
 ```
+
+`folders.parent_id` self-references `folders.id` (nested hierarchy; `NULL` = root). `files.folder_id` references `folders.id` (`NULL` = root). A `NULL` `trashed_at` means the item is live; a non-null timestamp means it's in Trash (shared across a folder's subtree so it restores together). Full-text (GIN) indexes on `files.name` and `folders.name` back search.
 
 ---
 
