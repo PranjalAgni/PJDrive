@@ -322,8 +322,8 @@ const alreadyUploadedParts: { partNumber: number; eTag: string }[] =
 // Seed parts with already-completed chunks
 const parts = [...alreadyUploadedParts];
 
-// Skip chunks that are already uploaded
-if (alreadyUploadedNumbers.includes(partNumber)) return null;
+// Skip chunks that are already uploaded (alreadyUploadedNumbers is a Set)
+if (alreadyUploadedNumbers.has(partNumber)) return null;
 ```
 
 If the S3 session has expired or been aborted (`ListParts` throws `NoSuchUpload`), `/upload/init` marks the stale row `failed` and starts a fresh session, and `/upload/status` reports zero uploaded chunks.

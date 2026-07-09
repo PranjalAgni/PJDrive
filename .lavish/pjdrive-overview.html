@@ -249,7 +249,7 @@ stateDiagram-v2
               <li class="step step-primary" data-content="1"><div class="text-left text-sm"><strong>Chunks upload in batches of 3</strong> via <span class="mono text-xs">Promise.all(batch)</span>, each PUT straight to S3.</div></li>
               <li class="step step-error" data-content="✕"><div class="text-left text-sm"><strong>One chunk's PUT rejects.</strong> <span class="mono text-xs">Promise.all</span> rejects the whole batch, so <span class="mono text-xs">uploadFile()</span> throws and the loop stops.</div></li>
               <li class="step step-warning" data-content="!"><div class="text-left text-sm"><strong>Chunks already PUT survive</strong> as parts inside the open S3 multipart session, but the client's in-memory <span class="mono text-xs">parts[]</span> array is lost.</div></li>
-              <li class="step" data-content="↺"><div class="text-left text-sm"><strong>On retry,</strong> the intended design: call <span class="mono text-xs">GET /upload/status/:uploadId</span>, get completed part numbers + eTags, skip them, resume from the first gap.</div></li>
+              <li class="step step-primary" data-content="↺"><div class="text-left text-sm"><strong>On retry,</strong> a fresh <span class="mono text-xs">POST /upload/init</span> matches the existing in-progress session (owner + checksum + total chunks + file name + folder via <span class="mono text-xs">getInProgressUpload</span>) and re-presigns against the same <span class="mono text-xs">uploadId</span>. The client then calls <span class="mono text-xs">GET /upload/status/:uploadId</span>, which reads S3 <span class="mono text-xs">ListParts</span> for completed part numbers + eTags, skips them, and resumes from the first gap.</div></li>
             </ul>
           </div>
 
@@ -267,11 +267,11 @@ stateDiagram-v2
           </div>
         </div>
 
-        <div class="alert alert-warning alert-soft mt-5 items-start">
+        <div class="alert alert-success alert-soft mt-5 items-start">
           <div class="text-sm">
-            <p class="font-semibold mb-1">⚠ Honest gap: resume is scaffolded, not fully wired</p>
-            <p class="text-base-content/80">The <span class="mono text-xs">uploads.uploaded_chunks</span> column is read by the client but <strong>never written</strong> after it is initialized to <span class="mono text-xs">[]</span> - so <span class="mono text-xs">GET /upload/status</span> always returns empty. Worse, the client calls <span class="mono text-xs">/upload/init</span> fresh on every attempt, minting a <em>new</em> <span class="mono text-xs">uploadId</span> and a new S3 session. As written, a crash mid-upload means the next attempt <strong>restarts from scratch</strong> and orphans the previous multipart parts.</p>
-            <p class="text-base-content/80 mt-2"><strong>To make it real, two pieces are missing:</strong> (1) persist each completed part's eTag into <span class="mono text-xs">uploaded_chunks</span> after every chunk (or query S3 <span class="mono text-xs">ListParts</span> on resume), and (2) look up an existing in-progress <span class="mono text-xs">upload</span> row for the file+checksum and reuse its <span class="mono text-xs">uploadId</span> instead of re-initing.</p>
+            <p class="font-semibold mb-1">✓ Resume is now fully wired (S3 is the source of truth)</p>
+            <p class="text-base-content/80">S3 <span class="mono text-xs">ListParts</span> - not the database - is authoritative for which chunks landed. A retried <span class="mono text-xs">/upload/init</span> looks up the existing in-progress <span class="mono text-xs">upload</span> row (deduped on owner + checksum + total chunks + file name + folder via <span class="mono text-xs">getInProgressUpload</span>) and re-presigns against the same <span class="mono text-xs">uploadId</span> instead of orphaning the prior parts. <span class="mono text-xs">GET /upload/status</span> calls S3 <span class="mono text-xs">ListParts</span> and returns completed parts as <span class="mono text-xs">{ partNumber, eTag }</span> objects, so a crash mid-upload <strong>re-sends only the missing chunks</strong>.</p>
+            <p class="text-base-content/80 mt-2">The <span class="mono text-xs">uploads.uploaded_chunks</span> column is intentionally left unused (never written) since S3 is queried directly on resume. If <span class="mono text-xs">ListParts</span> throws <span class="mono text-xs">NoSuchUpload</span> (the session expired or was aborted), <span class="mono text-xs">/upload/init</span> marks the stale row <span class="mono text-xs">failed</span>, trashes its orphaned file row, and starts a fresh session.</p>
           </div>
         </div>
       </div>
@@ -364,7 +364,7 @@ stateDiagram-v2
             <div class="grid md:grid-cols-3 gap-4 mt-3">
               <div>
                 <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Mechanism</div>
-                <p class="text-sm text-base-content/70">SHA-256 integrity + transactional writes, with a resumable-upload scaffold (idempotency key + status endpoint). See the "Honest gap" note in Core flows - resume is designed but not yet fully wired.</p>
+                <p class="text-sm text-base-content/70">SHA-256 integrity + transactional writes, with fully-wired resumable upload: a retried <span class="mono text-xs">/upload/init</span> reuses the existing S3 multipart session and <span class="mono text-xs">/upload/status</span> reads S3 <span class="mono text-xs">ListParts</span> to re-send only the missing chunks. See the resume note in Core flows.</p>
               </div>
               <div>
                 <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Design choices</div>
