@@ -32,12 +32,16 @@ export const RecordChunkBody = z.object({
 
 export const CompleteUploadBody = z.object({
   uploadId: z.string().uuid({ message: 'uploadId must be a valid UUID' }),
-  parts: z.array(
-    z.object({
-      partNumber: z.number().int().min(1),
-      eTag: z.string().min(1),
-    })
-  ).min(1, { message: 'parts array must not be empty' }),
+  // Accepted for backward compatibility but ignored: the server reconstructs the
+  // parts list from its own recorded chunk ETags rather than trusting the client.
+  parts: z
+    .array(
+      z.object({
+        partNumber: z.number().int().min(1),
+        eTag: z.string().min(1),
+      })
+    )
+    .optional(),
 });
 
 // ─── Sharing ─────────────────────────────────────────────────────────────────

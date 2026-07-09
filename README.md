@@ -381,7 +381,9 @@ Client                         API                    MinIO/S3
   |  (on retry: GET /upload/status → done chunks +        |
   |   fresh presigned URLs for the rest → skip done ones) |
   |                             |                        |
-  |─ POST /upload/complete ────>|                        |
+  |─ POST /upload/complete ────>|  verify every part 1..N |
+  |                             |  recorded (else 409); use|
+  |                             |  server's stored ETags   |
   |                             |─ CompleteMultipart ───>|
   |                             |─ INSERT sync_log       |
   |                             |─ broadcastSyncEvent    |
@@ -426,9 +428,11 @@ Chunked multipart upload solves both problems:
 2. The API creates a multipart upload session in S3 and returns presigned PUT URLs — one per chunk
 3. The client uploads each chunk **directly to S3** via `axios.put(presignedUrl, chunk)` — the API never touches the bytes
 4. After each chunk succeeds, the client posts its `partNumber:eTag` to `/upload/chunk`, which the API persists into the `uploads.uploaded_chunks` array
-5. The client calls `/upload/complete` with the ETags returned by S3, and S3 assembles the file
+5. The client calls `/upload/complete`, and S3 assembles the file from the parts the API recorded
 
 The API only handles ~200 bytes of metadata per request regardless of file size. Resumability works at two levels. Within a single attempt, each chunk's PUT + `/upload/chunk` record is wrapped in `withRetry` (bounded exponential backoff, 3 retries), so a transient network blip on one part retries only that part instead of aborting the whole file — important for the browser client, which cannot resume across a page reload. Across attempts: because each completed chunk's ETag is persisted server-side as soon as it lands, a retry calls `GET /upload/status/:uploadId`, which returns both the chunks that already finished and freshly presigned PUT URLs for the remaining parts (init-time URLs expire after an hour and are not persisted client-side). The client re-uploads only what is missing, then completes reusing the stored ETags. The desktop sync client persists the in-progress `uploadId` (keyed by file path and content checksum) to its local sync state, so an upload interrupted by a process crash or restart resumes the same S3 multipart session on the next attempt instead of starting over.
+
+Completion is server-authoritative: `/upload/complete` ignores the client-supplied parts list and reconstructs the multipart manifest from the ETags it recorded in `uploads.uploaded_chunks`. If any part in `1..totalChunks` was never recorded, it returns `409 upload incomplete` (listing the missing parts) and leaves the upload `in_progress` so the client can resume the gap. This prevents a buggy or partially-resumed client from finalizing a silently truncated file by omitting a chunk from its own list.
 
 ### Why SSE instead of WebSockets for sync?
 

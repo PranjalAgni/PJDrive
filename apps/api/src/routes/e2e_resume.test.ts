@@ -54,12 +54,15 @@ describe('E2E resumable multipart', () => {
       return { partNumber: parseInt(num, 10), eTag: rest.join(':') };
     });
 
-    // Only upload the missing part 2, using the freshly-presigned URL from status (not the init-time one)
+    // Only upload the missing part 2, using the freshly-presigned URL from status (not the init-time one),
+    // then record it so the server (source of truth for completion) knows the part landed.
     const etag2 = await putChunk(status.body.chunkUrls[1], chunk2);
+    await request(app).post('/upload/chunk').set('Authorization', `Bearer ${token}`).send({ uploadId, partNumber: 2, eTag: etag2 });
     resumedParts.push({ partNumber: 2, eTag: etag2 });
     resumedParts.sort((a: any, b: any) => a.partNumber - b.partNumber);
 
-    // Complete using the resumed (part1) + new (part2) eTags -> proves recorded eTag is valid for S3
+    // Complete: the server reconstructs the parts from its recorded eTags (ignoring the
+    // client-sent list), proving the recorded eTags are valid for S3's CompleteMultipartUpload.
     const complete = await request(app).post('/upload/complete').set('Authorization', `Bearer ${token}`).send({ uploadId, parts: resumedParts });
     expect(complete.status).toBe(200);
     expect(complete.body.file).toBeDefined();

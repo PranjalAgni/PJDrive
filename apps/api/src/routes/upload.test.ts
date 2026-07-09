@@ -141,3 +141,65 @@ describe('POST /upload/chunk', () => {
     await pool.query("DELETE FROM users WHERE email = 'other-upload@example.com'");
   });
 });
+
+describe('POST /upload/complete', () => {
+  async function initUpload(totalChunks: number) {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'complete-test.txt', mimeType: 'text/plain', sizeBytes: totalChunks * 10485760, totalChunks, checksum: 'cmp789' });
+    return initRes.body.uploadId as string;
+  }
+
+  it('requires auth', async () => {
+    const res = await request(app).post('/upload/complete').send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('refuses to finalize when a recorded part is missing, reporting which parts are absent', async () => {
+    const uploadId = await initUpload(3);
+
+    // Only parts 1 and 3 land; part 2 never gets recorded (e.g. client crashed / bug).
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-1"' });
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 3, eTag: '"etag-3"' });
+
+    // Even if a buggy client claims all parts are present, the server refuses:
+    // it trusts only its own recorded chunks, not the client-supplied parts list.
+    const res = await request(app)
+      .post('/upload/complete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        uploadId,
+        parts: [
+          { partNumber: 1, eTag: '"etag-1"' },
+          { partNumber: 2, eTag: '"etag-2-fake"' },
+          { partNumber: 3, eTag: '"etag-3"' },
+        ],
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('upload incomplete');
+    expect(res.body.missingParts).toEqual([2]);
+    expect(res.body.totalChunks).toBe(3);
+
+    // The upload stays in_progress so the client can still resume the missing part.
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.status).toBe('in_progress');
+  });
+
+  it('returns 404 for an unknown upload', async () => {
+    const res = await request(app)
+      .post('/upload/complete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId: '00000000-0000-0000-0000-000000000000' });
+    expect(res.status).toBe(404);
+  });
+});

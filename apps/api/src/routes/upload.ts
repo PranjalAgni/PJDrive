@@ -110,12 +110,43 @@ uploadRouter.post('/complete', requireAuth, async (req: AuthRequest, res) => {
   try {
     const parsed = parseBody(CompleteUploadBody, req.body, res);
     if (!parsed.ok) return;
-    const { uploadId, parts } = parsed.data;
+    const { uploadId } = parsed.data;
 
     const uploadRows = await getUploadWithFile.run({ uploadId, ownerId: req.userId! }, pool);
     if (uploadRows.length === 0) return res.status(404).json({ error: 'upload not found' });
 
     const upload = uploadRows[0];
+
+    // The server is the source of truth for which parts landed: it records every
+    // chunk's ETag in uploaded_chunks as each PUT succeeds. We ignore the client's
+    // self-reported parts list here so a buggy or resumed client can't finalize a
+    // silently truncated file by omitting a part. Reconstruct the parts from the
+    // recorded chunks and refuse to complete unless every part 1..total_chunks is present.
+    const recorded = new Map<number, string>();
+    for (const entry of (upload.uploaded_chunks as string[] | null) ?? []) {
+      const idx = entry.indexOf(':');
+      if (idx <= 0) continue;
+      const partNumber = parseInt(entry.slice(0, idx), 10);
+      const eTag = entry.slice(idx + 1);
+      if (Number.isInteger(partNumber) && eTag) recorded.set(partNumber, eTag);
+    }
+
+    const missing: number[] = [];
+    for (let i = 1; i <= upload.total_chunks; i++) {
+      if (!recorded.has(i)) missing.push(i);
+    }
+    if (missing.length > 0) {
+      return res.status(409).json({
+        error: 'upload incomplete',
+        missingParts: missing,
+        recordedParts: recorded.size,
+        totalChunks: upload.total_chunks,
+      });
+    }
+
+    const parts = Array.from(recorded.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([partNumber, eTag]) => ({ partNumber, eTag }));
 
     await completeMultipart(
       upload.storage_key,
