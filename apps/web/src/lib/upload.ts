@@ -39,7 +39,7 @@ export async function uploadFile(
   const alreadyUploadedParts: { partNumber: number; eTag: string }[] =
     (statusRes.data.uploadedChunks || []) as { partNumber: number; eTag: string }[];
 
-  const alreadyUploadedNumbers = alreadyUploadedParts.map((p) => p.partNumber);
+  const alreadyUploadedNumbers = new Set(alreadyUploadedParts.map((p) => p.partNumber));
 
   const parts: { partNumber: number; eTag: string }[] = [...alreadyUploadedParts];
 
@@ -48,7 +48,7 @@ export async function uploadFile(
     const batchResults = await Promise.all(
       batch.map(async (chunk, j) => {
         const partNumber = i + j + 1;
-        if (alreadyUploadedNumbers.includes(partNumber)) return null;
+        if (alreadyUploadedNumbers.has(partNumber)) return null;
 
         const res = await axios.put(chunkUrls[i + j], chunk, {
           headers: { 'Content-Type': 'application/octet-stream' },

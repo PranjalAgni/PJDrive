@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../db';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { initiateMultipart, presignChunkUpload, completeMultipart, listParts } from '../storage';
+import { initiateMultipart, presignChunkUpload, completeMultipart, listParts, abortMultipart } from '../storage';
 import { broadcastSyncEvent } from './sync';
 import {
   insertFile,
@@ -47,6 +47,17 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
         const code = (err as { name?: string; Code?: string }).name
           ?? (err as { name?: string; Code?: string }).Code;
         if (code === 'NoSuchUpload') {
+          // MinIO can spuriously throw NoSuchUpload on an empty-but-alive
+          // session (see /status). Abort before abandoning so a live-but-empty
+          // session is cleaned up rather than orphaned; on a truly dead session
+          // the abort is a harmless no-op that may itself throw NoSuchUpload.
+          try {
+            await abortMultipart(existing.storage_key, existing.upload_id);
+          } catch (abortErr) {
+            const abortCode = (abortErr as { name?: string; Code?: string }).name
+              ?? (abortErr as { name?: string; Code?: string }).Code;
+            if (abortCode !== 'NoSuchUpload') throw abortErr;
+          }
           await failUpload.run({ uploadId: existing.id }, pool);
           if (existing.file_id) {
             await trashOrphanedUploadFile.run(

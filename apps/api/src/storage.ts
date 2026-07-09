@@ -3,6 +3,7 @@ import {
   CreateMultipartUploadCommand,
   UploadPartCommand,
   CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
   GetObjectCommand,
   ListPartsCommand,
   type ListPartsCommandOutput,
@@ -52,6 +53,11 @@ export async function completeMultipart(
     UploadId: uploadId,
     MultipartUpload: { Parts: parts },
   });
+  await s3.send(cmd);
+}
+
+export async function abortMultipart(key: string, uploadId: string): Promise<void> {
+  const cmd = new AbortMultipartUploadCommand({ Bucket: BUCKET, Key: key, UploadId: uploadId });
   await s3.send(cmd);
 }
 
