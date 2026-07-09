@@ -56,3 +56,53 @@ describe('GET /upload/status/:uploadId', () => {
     expect(res.body.totalChunks).toBe(1);
   });
 });
+
+describe('POST /upload/init resume/dedup', () => {
+  it('returns the same uploadId when called twice with the same checksum+totalChunks', async () => {
+    const body = {
+      fileName: 'resume-test.txt',
+      mimeType: 'text/plain',
+      sizeBytes: 20971520,
+      totalChunks: 2,
+      checksum: 'resume-checksum-1',
+    };
+
+    const first = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+    expect(first.status).toBe(200);
+    expect(first.body.uploadId).toBeDefined();
+
+    const second = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body);
+    expect(second.status).toBe(200);
+    expect(second.body.uploadId).toBe(first.body.uploadId);
+    expect(second.body.chunkUrls).toHaveLength(2);
+  });
+
+  it('returns a different uploadId when the checksum differs', async () => {
+    const base = {
+      fileName: 'resume-test-b.txt',
+      mimeType: 'text/plain',
+      sizeBytes: 20971520,
+      totalChunks: 2,
+    };
+
+    const first = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...base, checksum: 'resume-checksum-2a' });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...base, checksum: 'resume-checksum-2b' });
+    expect(second.status).toBe(200);
+
+    expect(second.body.uploadId).not.toBe(first.body.uploadId);
+  });
+});

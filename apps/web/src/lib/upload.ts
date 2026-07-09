@@ -34,14 +34,10 @@ export async function uploadFile(
   const { uploadId, chunkUrls } = initData as { uploadId: string; chunkUrls: string[] };
 
   const statusRes = await apiClient.get(`/upload/status/${uploadId}`);
-  // Parse already-uploaded chunks AND their eTags from the status response
+  // Status now returns uploadedChunks as { partNumber, eTag }[] objects,
+  // sourced directly from S3 ListParts (authoritative).
   const alreadyUploadedParts: { partNumber: number; eTag: string }[] =
-    (statusRes.data.uploadedChunks || [])
-      .filter((e: string) => e.includes(':'))
-      .map((e: string) => {
-        const [num, ...eTagParts] = e.split(':');
-        return { partNumber: parseInt(num, 10), eTag: eTagParts.join(':') };
-      });
+    (statusRes.data.uploadedChunks || []) as { partNumber: number; eTag: string }[];
 
   const alreadyUploadedNumbers = alreadyUploadedParts.map((p) => p.partNumber);
 

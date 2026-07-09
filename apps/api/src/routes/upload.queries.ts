@@ -103,6 +103,44 @@ const getUploadStatusIR: any = {"usedParamSet":{"uploadId":true,"ownerId":true},
 export const getUploadStatus = new PreparedQuery<IGetUploadStatusParams,IGetUploadStatusResult>(getUploadStatusIR);
 
 
+/** 'GetInProgressUpload' parameters type */
+export interface IGetInProgressUploadParams {
+  checksum?: string | null | void;
+  ownerId?: string | null | void;
+  totalChunks?: number | null | void;
+}
+
+/** 'GetInProgressUpload' return type */
+export interface IGetInProgressUploadResult {
+  file_id: string | null;
+  id: string;
+  storage_key: string;
+  upload_id: string;
+}
+
+/** 'GetInProgressUpload' query type */
+export interface IGetInProgressUploadQuery {
+  params: IGetInProgressUploadParams;
+  result: IGetInProgressUploadResult;
+}
+
+const getInProgressUploadIR: any = {"usedParamSet":{"ownerId":true,"checksum":true,"totalChunks":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":118,"b":125}]},{"name":"checksum","required":false,"transform":{"type":"scalar"},"locs":[{"a":144,"b":152}]},{"name":"totalChunks","required":false,"transform":{"type":"scalar"},"locs":[{"a":177,"b":188}]}],"statement":"SELECT u.id, u.upload_id, u.file_id, f.storage_key\nFROM uploads u\nJOIN files f ON f.id = u.file_id\nWHERE u.owner_id = :ownerId AND f.checksum = :checksum\n  AND u.total_chunks = :totalChunks AND u.status = 'in_progress'\nORDER BY u.created_at DESC\nLIMIT 1"};
+
+/**
+ * Query generated from SQL:
+ * ```
+ * SELECT u.id, u.upload_id, u.file_id, f.storage_key
+ * FROM uploads u
+ * JOIN files f ON f.id = u.file_id
+ * WHERE u.owner_id = :ownerId AND f.checksum = :checksum
+ *   AND u.total_chunks = :totalChunks AND u.status = 'in_progress'
+ * ORDER BY u.created_at DESC
+ * LIMIT 1
+ * ```
+ */
+export const getInProgressUpload = new PreparedQuery<IGetInProgressUploadParams,IGetInProgressUploadResult>(getInProgressUploadIR);
+
+
 /** 'GetUploadWithFile' parameters type */
 export interface IGetUploadWithFileParams {
   ownerId?: string | null | void;

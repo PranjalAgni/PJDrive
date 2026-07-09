@@ -1,0 +1,13 @@
+
+> @pjdrive/api@0.0.1 build
+> tsc
+
+../../node_modules/vite/dist/node/index.d.ts(5,41): error TS2307: Cannot find module 'rollup/parseAst' or its corresponding type declarations.
+  There are types at '/Users/pranjal.agnihotri/coding/aiexperiments/pjdrive/node_modules/rollup/dist/parseAst.d.ts', but this result could not be resolved under your current 'moduleResolution' setting. Consider updating to 'node16', 'nodenext', or 'bundler'.
+npm error Lifecycle script `build` failed with error:
+npm error code 2
+npm error path /Users/pranjal.agnihotri/coding/aiexperiments/pjdrive/apps/api
+npm error workspace @pjdrive/api@0.0.1
+npm error location /Users/pranjal.agnihotri/coding/aiexperiments/pjdrive/apps/api
+npm error command failed
+npm error command sh -c tsc
