@@ -28,7 +28,7 @@ const fileName = 'resume-e2e.bin';
 async function putChunk(url: string, body: Buffer): Promise<string> {
   const res = await fetch(url, {
     method: 'PUT',
-    body,
+    body: new Uint8Array(body),
     headers: { 'Content-Type': 'application/octet-stream' },
   });
   if (!res.ok) throw new Error(`PUT chunk failed: ${res.status} ${await res.text()}`);
