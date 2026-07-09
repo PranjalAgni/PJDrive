@@ -378,7 +378,8 @@ Client                         API                    MinIO/S3
   |─ PUT chunk N (presigned) ─────────────────────────>|
   |─ POST /upload/chunk (N:etag)>|                        |
   |                             |                        |
-  |  (on retry: GET /upload/status → skip done chunks)   |
+  |  (on retry: GET /upload/status → done chunks +        |
+  |   fresh presigned URLs for the rest → skip done ones) |
   |                             |                        |
   |─ POST /upload/complete ────>|                        |
   |                             |─ CompleteMultipart ───>|
@@ -427,7 +428,7 @@ Chunked multipart upload solves both problems:
 4. After each chunk succeeds, the client posts its `partNumber:eTag` to `/upload/chunk`, which the API persists into the `uploads.uploaded_chunks` array
 5. The client calls `/upload/complete` with the ETags returned by S3, and S3 assembles the file
 
-The API only handles ~200 bytes of metadata per request regardless of file size. Resumability: because each completed chunk's ETag is persisted server-side as soon as it lands, a retry calls `GET /upload/status/:uploadId`, filters out chunks that already finished, and re-uploads only what is missing — then completes reusing the stored ETags. An interrupted upload picks up from the last successful chunk instead of starting over.
+The API only handles ~200 bytes of metadata per request regardless of file size. Resumability: because each completed chunk's ETag is persisted server-side as soon as it lands, a retry calls `GET /upload/status/:uploadId`, which returns both the chunks that already finished and freshly presigned PUT URLs for the remaining parts (init-time URLs expire after an hour and are not persisted client-side). The client re-uploads only what is missing, then completes reusing the stored ETags. The desktop sync client persists the in-progress `uploadId` (keyed by file path and content checksum) to its local sync state, so an upload interrupted by a process crash or restart resumes the same S3 multipart session on the next attempt instead of starting over.
 
 ### Why SSE instead of WebSockets for sync?
 

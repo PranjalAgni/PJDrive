@@ -2,7 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import axios from 'axios';
-import { setChecksum } from './state';
+import {
+  setChecksum,
+  getPendingUpload,
+  setPendingUpload,
+  clearPendingUpload,
+} from './state';
 
 const API_URL = process.env.API_URL || 'http://localhost:3000';
 let currentToken = process.env.SYNC_TOKEN || '';
@@ -43,40 +48,74 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
   const checksum = computeChecksum(filePath);
   const totalChunks = Math.ceil(stat.size / CHUNK_SIZE);
 
-  const { data: initData } = await getApi().post('/upload/init', {
-    fileName,
-    mimeType: 'application/octet-stream',
-    sizeBytes: stat.size,
-    totalChunks,
-    checksum,
-  });
-
-  const { uploadId, chunkUrls } = initData as { uploadId: string; chunkUrls: string[] };
+  let uploadId: string;
+  let chunkUrls: string[];
   const parts: { partNumber: number; eTag: string }[] = [];
+
+  // Try to resume a previously-interrupted upload of this exact file (same content).
+  // The pending record survives process restarts, so an upload cut short by a crash
+  // resumes from its last recorded chunk instead of starting over.
+  const pending = getPendingUpload(filePath);
+  let resumed = false;
+  if (pending && pending.checksum === checksum) {
+    try {
+      const { data: status } = await getApi().get(`/upload/status/${pending.uploadId}`);
+      if (status.status === 'in_progress') {
+        uploadId = pending.uploadId;
+        chunkUrls = status.chunkUrls;
+        for (const entry of (status.uploadedChunks || []) as string[]) {
+          const [num, ...rest] = entry.split(':');
+          parts.push({ partNumber: parseInt(num, 10), eTag: rest.join(':') });
+        }
+        resumed = true;
+        console.log(`[sync] resuming ${fileName}: ${parts.length}/${totalChunks} chunks already uploaded`);
+      }
+    } catch {
+      // Pending upload is gone/expired on the server; fall through to a fresh init.
+    }
+  }
+
+  if (!resumed) {
+    const { data: initData } = await getApi().post('/upload/init', {
+      fileName,
+      mimeType: 'application/octet-stream',
+      sizeBytes: stat.size,
+      totalChunks,
+      checksum,
+    });
+    ({ uploadId, chunkUrls } = initData as { uploadId: string; chunkUrls: string[] });
+    setPendingUpload(filePath, { uploadId, checksum });
+  }
+
+  const uploadedNumbers = new Set(parts.map((p) => p.partNumber));
   const fd = fs.openSync(filePath, 'r');
   try {
     for (let i = 0; i < totalChunks; i++) {
+      const partNumber = i + 1;
+      if (uploadedNumbers.has(partNumber)) continue; // already uploaded in a prior attempt
+
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, stat.size);
       const chunkBuf = Buffer.allocUnsafe(end - start);
       fs.readSync(fd, chunkBuf, 0, end - start, start);
 
-      const res = await axios.put(chunkUrls[i], chunkBuf, {
+      const res = await axios.put(chunkUrls![i], chunkBuf, {
         headers: { 'Content-Type': 'application/octet-stream' },
       });
       const eTag = res.headers.etag;
-      if (!eTag) throw new Error(`Missing ETag for chunk ${i + 1} of ${fileName}`);
+      if (!eTag) throw new Error(`Missing ETag for chunk ${partNumber} of ${fileName}`);
       // Persist the completed chunk so a later retry can resume instead of re-uploading it.
-      await getApi().post('/upload/chunk', { uploadId, partNumber: i + 1, eTag });
-      parts.push({ partNumber: i + 1, eTag });
-      console.log(`[sync] uploaded chunk ${i + 1}/${totalChunks} of ${fileName}`);
+      await getApi().post('/upload/chunk', { uploadId: uploadId!, partNumber, eTag });
+      parts.push({ partNumber, eTag });
+      console.log(`[sync] uploaded chunk ${partNumber}/${totalChunks} of ${fileName}`);
     }
   } finally {
     fs.closeSync(fd);
   }
 
   parts.sort((a, b) => a.partNumber - b.partNumber);
-  await getApi().post('/upload/complete', { uploadId, parts });
+  await getApi().post('/upload/complete', { uploadId: uploadId!, parts });
+  clearPendingUpload(filePath);
   setChecksum(filePath, checksum);
   console.log(`[sync] uploaded ${fileName}`);
 }

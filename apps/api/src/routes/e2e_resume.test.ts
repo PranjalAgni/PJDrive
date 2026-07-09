@@ -41,17 +41,21 @@ describe('E2E resumable multipart', () => {
     const etag1 = await putChunk(chunkUrls[0], chunk1);
     await request(app).post('/upload/chunk').set('Authorization', `Bearer ${token}`).send({ uploadId, partNumber: 1, eTag: etag1 });
 
-    // --- RESUME: read status, see part 1 already done ---
+    // --- RESUME: read status, see part 1 already done, and get FRESH chunk URLs ---
+    // This mirrors what a real client does after a crash: the init-time URLs are gone,
+    // so it re-presigns the remaining parts via /upload/status.
     const status = await request(app).get(`/upload/status/${uploadId}`).set('Authorization', `Bearer ${token}`);
     expect(status.body.uploadedChunks).toEqual([`1:${etag1}`]);
+    expect(status.body.status).toBe('in_progress');
+    expect(status.body.chunkUrls).toHaveLength(2);
 
     const resumedParts = status.body.uploadedChunks.map((e: string) => {
       const [num, ...rest] = e.split(':');
       return { partNumber: parseInt(num, 10), eTag: rest.join(':') };
     });
 
-    // Only upload the missing part 2
-    const etag2 = await putChunk(chunkUrls[1], chunk2);
+    // Only upload the missing part 2, using the freshly-presigned URL from status (not the init-time one)
+    const etag2 = await putChunk(status.body.chunkUrls[1], chunk2);
     resumedParts.push({ partNumber: 2, eTag: etag2 });
     resumedParts.sort((a: any, b: any) => a.partNumber - b.partNumber);
 

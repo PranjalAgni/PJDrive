@@ -55,6 +55,24 @@ describe('GET /upload/status/:uploadId', () => {
     expect(res.body.uploadedChunks).toEqual([]);
     expect(res.body.totalChunks).toBe(1);
   });
+
+  it('returns fresh presigned chunk URLs for an in-progress upload so a resume can re-PUT parts', async () => {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'resume-urls.txt', mimeType: 'text/plain', sizeBytes: 3 * 10485760, totalChunks: 3, checksum: 'urls123' });
+
+    const { uploadId } = initRes.body;
+
+    const res = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('in_progress');
+    expect(res.body.chunkUrls).toHaveLength(3);
+    expect(res.body.chunkUrls[0]).toContain('partNumber=1');
+  });
 });
 
 describe('POST /upload/chunk', () => {

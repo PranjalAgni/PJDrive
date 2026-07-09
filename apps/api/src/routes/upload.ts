@@ -7,7 +7,6 @@ import { broadcastSyncEvent } from './sync';
 import {
   insertFile,
   insertUpload,
-  getUploadStatus,
   getUploadWithFile,
   recordChunk,
   completeUpload,
@@ -53,12 +52,29 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
 
 uploadRouter.get('/status/:uploadId', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const rows = await getUploadStatus.run(
+    const rows = await getUploadWithFile.run(
       { uploadId: req.params.uploadId, ownerId: req.userId! },
       pool,
     );
     if (rows.length === 0) return res.status(404).json({ error: 'upload not found' });
-    return res.json({ uploadedChunks: rows[0].uploaded_chunks, totalChunks: rows[0].total_chunks });
+
+    const upload = rows[0];
+    // Re-presign fresh chunk URLs so a resumed upload can PUT its remaining parts
+    // even after the original init-time URLs have expired (they are never persisted client-side).
+    // Only meaningful while the upload is still in progress.
+    const chunkUrls: string[] = [];
+    if (upload.status === 'in_progress') {
+      for (let i = 1; i <= upload.total_chunks; i++) {
+        chunkUrls.push(await presignChunkUpload(upload.storage_key, upload.upload_id, i));
+      }
+    }
+
+    return res.json({
+      uploadedChunks: upload.uploaded_chunks,
+      totalChunks: upload.total_chunks,
+      status: upload.status,
+      chunkUrls,
+    });
   } catch (err) {
     console.error('upload status error:', err);
     return res.status(500).json({ error: 'internal server error' });
