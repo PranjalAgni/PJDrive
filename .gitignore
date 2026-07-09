@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.turbo/
 sync-folder/*
 !sync-folder/.gitkeep
 .env

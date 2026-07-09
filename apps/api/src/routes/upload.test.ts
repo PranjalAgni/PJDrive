@@ -83,6 +83,29 @@ describe('POST /upload/init resume/dedup', () => {
     expect(second.body.chunkUrls).toHaveLength(2);
   });
 
+  it('returns a different uploadId when only the fileName differs', async () => {
+    const base = {
+      mimeType: 'text/plain',
+      sizeBytes: 20971520,
+      totalChunks: 2,
+      checksum: 'resume-checksum-name',
+    };
+
+    const first = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...base, fileName: 'name-a.txt' });
+    expect(first.status).toBe(200);
+
+    const second = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ ...base, fileName: 'name-b.txt' });
+    expect(second.status).toBe(200);
+
+    expect(second.body.uploadId).not.toBe(first.body.uploadId);
+  });
+
   it('returns a different uploadId when the checksum differs', async () => {
     const base = {
       fileName: 'resume-test-b.txt',

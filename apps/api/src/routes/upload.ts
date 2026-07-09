@@ -10,6 +10,7 @@ import {
   getInProgressUpload,
   getUploadWithFile,
   completeUpload,
+  failUpload,
   insertSyncLogCreated,
   getFileById,
 } from './upload.queries';
@@ -24,19 +25,40 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
     const { fileName, mimeType, sizeBytes, totalChunks, checksum, folderId } = parsed.data;
 
     // Resume path: if the same owner is retrying an in-progress upload for the
-    // same content (checksum) and shape (totalChunks), reuse the existing
-    // file row + S3 multipart session instead of orphaning them.
+    // same content (checksum), shape (totalChunks), and destination
+    // (fileName + folderId), reuse the existing file row + S3 multipart
+    // session instead of orphaning them.
     const existingRows = await getInProgressUpload.run(
-      { ownerId: req.userId!, checksum, totalChunks },
+      { ownerId: req.userId!, checksum, totalChunks, fileName, folderId: folderId ?? null },
       pool,
     );
     if (existingRows.length > 0) {
       const existing = existingRows[0];
-      const chunkUrls: string[] = [];
-      for (let i = 1; i <= totalChunks; i++) {
-        chunkUrls.push(await presignChunkUpload(existing.storage_key, existing.upload_id, i));
+      // The S3 multipart session must still be alive for a resume to work.
+      // If it has been aborted/expired (bucket lifecycle, manual abort, MinIO
+      // restart), listParts throws NoSuchUpload; re-presigning against the dead
+      // upload_id would wedge every retry forever. Mark the stale row failed and
+      // fall through to create a fresh session.
+      let sessionAlive = true;
+      try {
+        await listParts(existing.storage_key, existing.upload_id);
+      } catch (err) {
+        const code = (err as { name?: string; Code?: string }).name
+          ?? (err as { name?: string; Code?: string }).Code;
+        if (code === 'NoSuchUpload') {
+          await failUpload.run({ uploadId: existing.id }, pool);
+          sessionAlive = false;
+        } else {
+          throw err;
+        }
       }
-      return res.json({ uploadId: existing.id, chunkUrls });
+      if (sessionAlive) {
+        const chunkUrls: string[] = [];
+        for (let i = 1; i <= totalChunks; i++) {
+          chunkUrls.push(await presignChunkUpload(existing.storage_key, existing.upload_id, i));
+        }
+        return res.json({ uploadId: existing.id, chunkUrls });
+      }
     }
 
     const storageKey = `${req.userId}/${uuidv4()}/${fileName}`;
