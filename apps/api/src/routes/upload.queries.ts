@@ -72,37 +72,6 @@ const insertUploadIR: any = {"usedParamSet":{"fileId":true,"ownerId":true,"uploa
 export const insertUpload = new PreparedQuery<IInsertUploadParams,IInsertUploadResult>(insertUploadIR);
 
 
-/** 'GetUploadStatus' parameters type */
-export interface IGetUploadStatusParams {
-  ownerId?: string | null | void;
-  uploadId?: string | null | void;
-}
-
-/** 'GetUploadStatus' return type */
-export interface IGetUploadStatusResult {
-  total_chunks: number;
-  uploaded_chunks: Json | null;
-}
-
-/** 'GetUploadStatus' query type */
-export interface IGetUploadStatusQuery {
-  params: IGetUploadStatusParams;
-  result: IGetUploadStatusResult;
-}
-
-const getUploadStatusIR: any = {"usedParamSet":{"uploadId":true,"ownerId":true},"params":[{"name":"uploadId","required":false,"transform":{"type":"scalar"},"locs":[{"a":61,"b":69}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":86,"b":93}]}],"statement":"SELECT uploaded_chunks, total_chunks\nFROM uploads\nWHERE id = :uploadId AND owner_id = :ownerId"};
-
-/**
- * Query generated from SQL:
- * ```
- * SELECT uploaded_chunks, total_chunks
- * FROM uploads
- * WHERE id = :uploadId AND owner_id = :ownerId
- * ```
- */
-export const getUploadStatus = new PreparedQuery<IGetUploadStatusParams,IGetUploadStatusResult>(getUploadStatusIR);
-
-
 /** 'GetInProgressUpload' parameters type */
 export interface IGetInProgressUploadParams {
   checksum?: string | null | void;
@@ -126,7 +95,7 @@ export interface IGetInProgressUploadQuery {
   result: IGetInProgressUploadResult;
 }
 
-const getInProgressUploadIR: any = {"usedParamSet":{"ownerId":true,"checksum":true,"totalChunks":true,"fileName":true,"folderId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":118,"b":125}]},{"name":"checksum","required":false,"transform":{"type":"scalar"},"locs":[{"a":144,"b":152}]},{"name":"totalChunks","required":false,"transform":{"type":"scalar"},"locs":[{"a":177,"b":188}]},{"name":"fileName","required":false,"transform":{"type":"scalar"},"locs":[{"a":234,"b":242}]},{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":281,"b":289}]}],"statement":"SELECT u.id, u.upload_id, u.file_id, f.storage_key\nFROM uploads u\nJOIN files f ON f.id = u.file_id\nWHERE u.owner_id = :ownerId AND f.checksum = :checksum\n  AND u.total_chunks = :totalChunks AND u.status = 'in_progress'\n  AND f.name = :fileName AND f.folder_id IS NOT DISTINCT FROM :folderId\nORDER BY u.created_at DESC\nLIMIT 1"};
+const getInProgressUploadIR: any = {"usedParamSet":{"ownerId":true,"checksum":true,"totalChunks":true,"fileName":true,"folderId":true},"params":[{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":118,"b":125}]},{"name":"checksum","required":false,"transform":{"type":"scalar"},"locs":[{"a":144,"b":152}]},{"name":"totalChunks","required":false,"transform":{"type":"scalar"},"locs":[{"a":177,"b":188}]},{"name":"fileName","required":false,"transform":{"type":"scalar"},"locs":[{"a":234,"b":242}]},{"name":"folderId","required":false,"transform":{"type":"scalar"},"locs":[{"a":281,"b":289}]}],"statement":"SELECT u.id, u.upload_id, u.file_id, f.storage_key\nFROM uploads u\nJOIN files f ON f.id = u.file_id\nWHERE u.owner_id = :ownerId AND f.checksum = :checksum\n  AND u.total_chunks = :totalChunks AND u.status = 'in_progress'\n  AND f.name = :fileName AND f.folder_id IS NOT DISTINCT FROM :folderId\n  AND f.trashed_at IS NULL\nORDER BY u.created_at DESC\nLIMIT 1"};
 
 /**
  * Query generated from SQL:
@@ -137,6 +106,7 @@ const getInProgressUploadIR: any = {"usedParamSet":{"ownerId":true,"checksum":tr
  * WHERE u.owner_id = :ownerId AND f.checksum = :checksum
  *   AND u.total_chunks = :totalChunks AND u.status = 'in_progress'
  *   AND f.name = :fileName AND f.folder_id IS NOT DISTINCT FROM :folderId
+ *   AND f.trashed_at IS NULL
  * ORDER BY u.created_at DESC
  * LIMIT 1
  * ```
@@ -233,6 +203,34 @@ const failUploadIR: any = {"usedParamSet":{"uploadId":true},"params":[{"name":"u
  * ```
  */
 export const failUpload = new PreparedQuery<IFailUploadParams,IFailUploadResult>(failUploadIR);
+
+
+/** 'TrashOrphanedUploadFile' parameters type */
+export interface ITrashOrphanedUploadFileParams {
+  fileId?: string | null | void;
+  ownerId?: string | null | void;
+}
+
+/** 'TrashOrphanedUploadFile' return type */
+export type ITrashOrphanedUploadFileResult = void;
+
+/** 'TrashOrphanedUploadFile' query type */
+export interface ITrashOrphanedUploadFileQuery {
+  params: ITrashOrphanedUploadFileParams;
+  result: ITrashOrphanedUploadFileResult;
+}
+
+const trashOrphanedUploadFileIR: any = {"usedParamSet":{"fileId":true,"ownerId":true},"params":[{"name":"fileId","required":false,"transform":{"type":"scalar"},"locs":[{"a":47,"b":53}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":70,"b":77}]}],"statement":"UPDATE files\nSET trashed_at = NOW()\nWHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL"};
+
+/**
+ * Query generated from SQL:
+ * ```
+ * UPDATE files
+ * SET trashed_at = NOW()
+ * WHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL
+ * ```
+ */
+export const trashOrphanedUploadFile = new PreparedQuery<ITrashOrphanedUploadFileParams,ITrashOrphanedUploadFileResult>(trashOrphanedUploadFileIR);
 
 
 /** 'InsertSyncLogCreated' parameters type */

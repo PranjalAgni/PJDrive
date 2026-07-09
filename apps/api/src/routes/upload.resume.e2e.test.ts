@@ -170,6 +170,11 @@ describe('resumable multipart upload (E2E vs live MinIO)', () => {
 
     const staleStatus = await pool.query('SELECT status FROM uploads WHERE id = $1', [uploadId1]);
     expect(staleStatus.rows[0].status).toBe('failed');
-    console.log(`[e2e] dead session recovered: old row -> '${staleStatus.rows[0].status}', new uploadId=${init2.body.uploadId}`);
+
+    // The file row from the dead session must be trashed, not left as a phantom
+    // entry in the user's file list with no backing S3 object.
+    const orphanFile = await pool.query('SELECT trashed_at FROM files WHERE id = $1', [row.rows[0].file_id]);
+    expect(orphanFile.rows[0].trashed_at).not.toBeNull();
+    console.log(`[e2e] dead session recovered: old row -> '${staleStatus.rows[0].status}', orphan file trashed, new uploadId=${init2.body.uploadId}`);
   }, 30000);
 });

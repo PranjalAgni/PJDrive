@@ -11,6 +11,7 @@ import {
   getUploadWithFile,
   completeUpload,
   failUpload,
+  trashOrphanedUploadFile,
   insertSyncLogCreated,
   getFileById,
 } from './upload.queries';
@@ -47,6 +48,12 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
           ?? (err as { name?: string; Code?: string }).Code;
         if (code === 'NoSuchUpload') {
           await failUpload.run({ uploadId: existing.id }, pool);
+          if (existing.file_id) {
+            await trashOrphanedUploadFile.run(
+              { fileId: existing.file_id, ownerId: req.userId! },
+              pool,
+            );
+          }
           sessionAlive = false;
         } else {
           throw err;

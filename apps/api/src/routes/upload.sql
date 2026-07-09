@@ -8,11 +8,6 @@ INSERT INTO uploads (file_id, owner_id, upload_id, total_chunks)
 VALUES (:fileId, :ownerId, :uploadId, :totalChunks)
 RETURNING id;
 
-/* @name GetUploadStatus */
-SELECT uploaded_chunks, total_chunks
-FROM uploads
-WHERE id = :uploadId AND owner_id = :ownerId;
-
 /* @name GetInProgressUpload */
 SELECT u.id, u.upload_id, u.file_id, f.storage_key
 FROM uploads u
@@ -20,6 +15,7 @@ JOIN files f ON f.id = u.file_id
 WHERE u.owner_id = :ownerId AND f.checksum = :checksum
   AND u.total_chunks = :totalChunks AND u.status = 'in_progress'
   AND f.name = :fileName AND f.folder_id IS NOT DISTINCT FROM :folderId
+  AND f.trashed_at IS NULL
 ORDER BY u.created_at DESC
 LIMIT 1;
 
@@ -27,6 +23,11 @@ LIMIT 1;
 UPDATE uploads
 SET status = 'failed'
 WHERE id = :uploadId;
+
+/* @name TrashOrphanedUploadFile */
+UPDATE files
+SET trashed_at = NOW()
+WHERE id = :fileId AND owner_id = :ownerId AND trashed_at IS NULL;
 
 /* @name GetUploadWithFile */
 SELECT u.id, u.file_id, u.upload_id, u.total_chunks, u.uploaded_chunks, u.status, f.storage_key

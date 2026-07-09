@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .turbo/
+.DS_Store
+.mcp.json
 sync-folder/*
 !sync-folder/.gitkeep
 .env

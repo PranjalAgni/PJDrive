@@ -4,11 +4,7 @@ import EventSource from 'eventsource';
 import axios from 'axios';
 import fs from 'fs';
 import { startWatcher, markAsDownloaded } from '../../../sync/src/watcher';
-import {
-  downloadFile,
-  deleteLocalFile,
-  setSyncToken as setDownloaderToken,
-} from '../../../sync/src/downloader';
+import { downloadFile, deleteLocalFile, setSyncToken as setDownloaderToken } from '../../../sync/src/downloader';
 import { setSyncToken as setUploaderToken } from '../../../sync/src/uploader';
 import { getLastSyncAt, setLastSyncAt } from '../../../sync/src/state';
 
@@ -19,11 +15,7 @@ const POLL_INTERVAL_MS = 30000;
 // Dedup: track recently emitted activity keys to prevent double-emission
 // (poll catch-up + SSE can both fire for the same event)
 const recentlyEmitted = new Set<string>();
-function dedupEmit(
-  win: BrowserWindow,
-  type: 'upload' | 'download',
-  fileName: string,
-) {
+function dedupEmit(win: BrowserWindow, type: 'upload' | 'download', fileName: string) {
   const key = `${type}:${fileName}`;
   if (recentlyEmitted.has(key)) return;
   recentlyEmitted.add(key);
@@ -33,16 +25,11 @@ function dedupEmit(
 
 // Patch setChecksum once at module load to detect completed uploads
 let currentWin: BrowserWindow | null = null;
-const stateModule =
-  require('../../../sync/src/state') as typeof import('../../../sync/src/state');
+const stateModule = require('../../../sync/src/state') as typeof import('../../../sync/src/state');
 const origSetChecksum = stateModule.setChecksum;
 stateModule.setChecksum = (filePath: string, checksum: string) => {
   origSetChecksum(filePath, checksum);
-  if (
-    currentWin &&
-    !currentWin.isDestroyed() &&
-    filePath.startsWith(SYNC_FOLDER)
-  ) {
+  if (currentWin && !currentWin.isDestroyed() && filePath.startsWith(SYNC_FOLDER)) {
     dedupEmit(currentWin, 'upload', path.basename(filePath));
   }
 };
@@ -67,11 +54,7 @@ export function getSyncStatus(): SyncStatus {
 
 // ── Activity emission ─────────────────────────────────────────────────────────
 
-function emitActivity(
-  win: BrowserWindow,
-  type: 'upload' | 'download',
-  fileName: string,
-) {
+function emitActivity(win: BrowserWindow, type: 'upload' | 'download', fileName: string) {
   if (win.isDestroyed()) return;
   win.webContents.send('activity', {
     type,
@@ -95,14 +78,10 @@ async function poll(win: BrowserWindow, silent = false) {
     const { data } = await makeApi().get(`/sync/changes?since=${since}`);
     for (const event of data as { file_id: string; event_type: string }[]) {
       if (event.event_type === 'created' || event.event_type === 'updated') {
-        const beforeFiles = fs.existsSync(SYNC_FOLDER)
-          ? fs.readdirSync(SYNC_FOLDER)
-          : [];
+        const beforeFiles = fs.existsSync(SYNC_FOLDER) ? fs.readdirSync(SYNC_FOLDER) : [];
         await downloadFile(event.file_id);
-        const afterFiles = fs.existsSync(SYNC_FOLDER)
-          ? fs.readdirSync(SYNC_FOLDER)
-          : [];
-        const newFile = afterFiles.find((f) => !beforeFiles.includes(f));
+        const afterFiles = fs.existsSync(SYNC_FOLDER) ? fs.readdirSync(SYNC_FOLDER) : [];
+        const newFile = afterFiles.find(f => !beforeFiles.includes(f));
         if (newFile && !silent) {
           markAsDownloaded(path.join(SYNC_FOLDER, newFile));
           dedupEmit(win, 'download', newFile);
@@ -142,14 +121,10 @@ function connectSSE(win: BrowserWindow) {
     try {
       const event = JSON.parse(e.data) as { fileId: string; eventType: string };
       if (event.eventType === 'created' || event.eventType === 'updated') {
-        const beforeFiles = fs.existsSync(SYNC_FOLDER)
-          ? fs.readdirSync(SYNC_FOLDER)
-          : [];
+        const beforeFiles = fs.existsSync(SYNC_FOLDER) ? fs.readdirSync(SYNC_FOLDER) : [];
         await downloadFile(event.fileId);
-        const afterFiles = fs.existsSync(SYNC_FOLDER)
-          ? fs.readdirSync(SYNC_FOLDER)
-          : [];
-        const newFile = afterFiles.find((f) => !beforeFiles.includes(f));
+        const afterFiles = fs.existsSync(SYNC_FOLDER) ? fs.readdirSync(SYNC_FOLDER) : [];
+        const newFile = afterFiles.find(f => !beforeFiles.includes(f));
         if (newFile) {
           markAsDownloaded(path.join(SYNC_FOLDER, newFile));
           dedupEmit(win, 'download', newFile);
@@ -180,11 +155,7 @@ function connectSSE(win: BrowserWindow) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function startSync(
-  token: string,
-  email: string,
-  win: BrowserWindow,
-) {
+export async function startSync(token: string, email: string, win: BrowserWindow) {
   currentToken = token;
   status.email = email;
   setDownloaderToken(token);
