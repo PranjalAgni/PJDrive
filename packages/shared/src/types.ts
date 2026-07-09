@@ -31,7 +31,7 @@ export interface UploadJob {
   file_id: string;
   upload_id: string;
   total_chunks: number;
-  uploaded_chunks: string[];
+  uploaded_chunks: { partNumber: number; eTag: string }[];
   status: 'in_progress' | 'complete' | 'failed';
 }
 

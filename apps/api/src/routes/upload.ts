@@ -2,14 +2,15 @@ import { Router } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../db';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { initiateMultipart, presignChunkUpload, completeMultipart } from '../storage';
+import { initiateMultipart, presignChunkUpload, completeMultipart, listParts } from '../storage';
 import { broadcastSyncEvent } from './sync';
 import {
   insertFile,
   insertUpload,
-  getUploadStatus,
+  getInProgressUpload,
   getUploadWithFile,
   completeUpload,
+  failUpload,
   insertSyncLogCreated,
   getFileById,
 } from './upload.queries';
@@ -22,6 +23,43 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
     const parsed = parseBody(InitUploadBody, req.body, res);
     if (!parsed.ok) return;
     const { fileName, mimeType, sizeBytes, totalChunks, checksum, folderId } = parsed.data;
+
+    // Resume path: if the same owner is retrying an in-progress upload for the
+    // same content (checksum), shape (totalChunks), and destination
+    // (fileName + folderId), reuse the existing file row + S3 multipart
+    // session instead of orphaning them.
+    const existingRows = await getInProgressUpload.run(
+      { ownerId: req.userId!, checksum, totalChunks, fileName, folderId: folderId ?? null },
+      pool,
+    );
+    if (existingRows.length > 0) {
+      const existing = existingRows[0];
+      // The S3 multipart session must still be alive for a resume to work.
+      // If it has been aborted/expired (bucket lifecycle, manual abort, MinIO
+      // restart), listParts throws NoSuchUpload; re-presigning against the dead
+      // upload_id would wedge every retry forever. Mark the stale row failed and
+      // fall through to create a fresh session.
+      let sessionAlive = true;
+      try {
+        await listParts(existing.storage_key, existing.upload_id);
+      } catch (err) {
+        const code = (err as { name?: string; Code?: string }).name
+          ?? (err as { name?: string; Code?: string }).Code;
+        if (code === 'NoSuchUpload') {
+          await failUpload.run({ uploadId: existing.id }, pool);
+          sessionAlive = false;
+        } else {
+          throw err;
+        }
+      }
+      if (sessionAlive) {
+        const chunkUrls: string[] = [];
+        for (let i = 1; i <= totalChunks; i++) {
+          chunkUrls.push(await presignChunkUpload(existing.storage_key, existing.upload_id, i));
+        }
+        return res.json({ uploadId: existing.id, chunkUrls });
+      }
+    }
 
     const storageKey = `${req.userId}/${uuidv4()}/${fileName}`;
 
@@ -52,12 +90,34 @@ uploadRouter.post('/init', requireAuth, async (req: AuthRequest, res) => {
 
 uploadRouter.get('/status/:uploadId', requireAuth, async (req: AuthRequest, res) => {
   try {
-    const rows = await getUploadStatus.run(
+    const rows = await getUploadWithFile.run(
       { uploadId: req.params.uploadId, ownerId: req.userId! },
       pool,
     );
     if (rows.length === 0) return res.status(404).json({ error: 'upload not found' });
-    return res.json({ uploadedChunks: rows[0].uploaded_chunks, totalChunks: rows[0].total_chunks });
+    const upload = rows[0];
+
+    // S3 is the source of truth for uploaded parts (correct eTags, no DB writes
+    // per chunk). If the multipart session is gone (NoSuchUpload / expired /
+    // aborted, and MinIO's occasional quirks on empty sessions), treat it as
+    // "nothing uploaded yet" so the client can proceed or re-init cleanly.
+    let parts: { PartNumber: number; ETag: string }[] = [];
+    try {
+      parts = await listParts(upload.storage_key, upload.upload_id);
+    } catch (err) {
+      const code = (err as { name?: string; Code?: string }).name
+        ?? (err as { name?: string; Code?: string }).Code;
+      if (code === 'NoSuchUpload') {
+        parts = [];
+      } else {
+        throw err;
+      }
+    }
+
+    return res.json({
+      uploadedChunks: parts.map((p) => ({ partNumber: p.PartNumber, eTag: p.ETag })),
+      totalChunks: upload.total_chunks,
+    });
   } catch (err) {
     console.error('upload status error:', err);
     return res.status(500).json({ error: 'internal server error' });

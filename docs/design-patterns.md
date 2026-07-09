@@ -77,7 +77,7 @@ router.put('/:id', requireAuth, requireFileAccess('editor'), handler);
 
 **Where it appears:** `apps/api/src/storage.ts`
 
-The AWS S3 SDK has a verbose command-based API. The facade wraps it in four plain functions:
+The AWS S3 SDK has a verbose command-based API. The facade wraps it in five plain functions:
 
 ```typescript
 // apps/api/src/storage.ts
@@ -87,6 +87,7 @@ export async function initiateMultipart(key: string): Promise<string>
 export async function presignChunkUpload(key, uploadId, partNumber): Promise<string>
 export async function completeMultipart(key, uploadId, parts): Promise<void>
 export async function presignDownload(key, expiresIn?): Promise<string>
+export async function listParts(key, uploadId): Promise<{ PartNumber; ETag }[]>  // paginates ListParts
 
 // What's hidden:
 // new S3Client({ endpoint, credentials, forcePathStyle, region })
@@ -293,7 +294,7 @@ watcher.on('change', (filePath) => scheduleUpload(filePath));
 
 **Where it appears:** The chunked upload flow in `apps/api/src/routes/upload.ts`
 
-The `uploads` table stores the in-progress state of every multipart upload:
+The `uploads` table records the S3 multipart session for each in-progress upload:
 
 ```sql
 -- apps/api/migrations/003_create_uploads.sql
@@ -302,22 +303,21 @@ CREATE TABLE uploads (
   file_id         UUID,
   upload_id       VARCHAR(500),   -- S3 multipart upload ID
   total_chunks    INT,
-  uploaded_chunks JSONB DEFAULT '[]',
+  uploaded_chunks JSONB DEFAULT '[]',  -- intentionally unused; S3 ListParts is authoritative
   status          VARCHAR(20) DEFAULT 'in_progress'
 );
 ```
+
+S3 - not the database - is the source of truth for which chunks landed. A retried `/upload/init` finds the existing in-progress session (deduped on owner + checksum + total chunks + file name + folder via `getInProgressUpload`) and re-presigns against the same `upload_id` instead of orphaning it. `/upload/status` then calls S3 `ListParts` and returns the completed parts as `{ partNumber, eTag }` objects, so the `uploaded_chunks` column is never written.
 
 On the client, before uploading chunks, the status is checked:
 
 ```typescript
 // apps/web/src/lib/upload.ts
 const statusRes = await apiClient.get(`/upload/status/${uploadId}`);
-const alreadyUploadedParts = (statusRes.data.uploadedChunks || [])
-  .filter((e: string) => e.includes(':'))
-  .map((e: string) => {
-    const [num, ...eTagParts] = e.split(':');
-    return { partNumber: parseInt(num, 10), eTag: eTagParts.join(':') };
-  });
+// uploadedChunks arrives as { partNumber, eTag }[] straight from S3 ListParts.
+const alreadyUploadedParts: { partNumber: number; eTag: string }[] =
+  statusRes.data.uploadedChunks || [];
 
 // Seed parts with already-completed chunks
 const parts = [...alreadyUploadedParts];
@@ -326,7 +326,9 @@ const parts = [...alreadyUploadedParts];
 if (alreadyUploadedNumbers.includes(partNumber)) return null;
 ```
 
-**Why:** A 50GB upload interrupted at 90% should resume from 90%, not restart. The upload ID is the idempotency key — the server tracks exactly which chunks succeeded.
+If the S3 session has expired or been aborted (`ListParts` throws `NoSuchUpload`), `/upload/init` marks the stale row `failed` and starts a fresh session, and `/upload/status` reports zero uploaded chunks.
+
+**Why:** A 50GB upload interrupted at 90% should resume from 90%, not restart. The upload ID is the idempotency key, and S3 `ListParts` tells the server exactly which chunks succeeded.
 
 ---
 

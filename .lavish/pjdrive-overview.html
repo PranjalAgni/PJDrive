@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PJDrive - Architecture & NFR Walkthrough</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "base",
+      securityLevel: "strict",
+      themeVariables: {
+        primaryColor: "#1c1917",
+        primaryTextColor: "#e7c98f",
+        primaryBorderColor: "#a1832f",
+        lineColor: "#8a7a52",
+        secondaryColor: "#232019",
+        tertiaryColor: "#181510",
+        fontFamily: "ui-sans-serif, system-ui, sans-serif"
+      }
+    });
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, h5, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
+    :where(img, svg) { max-width: 100%; height: auto; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .glow { text-shadow: 0 0 24px rgba(231,201,143,0.25); }
+    .mermaid { display: flex; justify-content: center; }
+    .card-hover { transition: transform .15s ease, border-color .15s ease; }
+    .card-hover:hover { transform: translateY(-2px); border-color: var(--color-primary); }
+    .rule { border-left: 3px solid var(--color-primary); }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+  <!-- ===================== HERO ===================== -->
+  <header class="border-b border-base-content/10 bg-base-200/40">
+    <div class="mx-auto max-w-6xl px-6 py-12 lg:py-16">
+      <div class="flex items-center gap-3 mb-4">
+        <span class="badge badge-primary badge-lg mono">pjdrive</span>
+        <span class="badge badge-soft badge-neutral">Turborepo monorepo</span>
+        <span class="badge badge-soft badge-neutral">learning project</span>
+      </div>
+      <h1 class="text-4xl lg:text-6xl font-bold glow leading-tight">A Google Drive clone,<br/>engineered end to end.</h1>
+      <p class="mt-5 max-w-3xl text-lg text-base-content/70">
+        Chunked resumable upload, presigned direct-to-S3 transfer, real-time cross-device sync over SSE,
+        email &amp; link sharing with role-based access, and fully typed SQL - across a web app, an API, a
+        headless sync client, and an Electron desktop app.
+      </p>
+      <div class="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="stat bg-base-100 rounded-box border border-base-content/10 p-4">
+          <div class="stat-title text-xs">Apps + packages</div>
+          <div class="stat-value text-2xl text-primary">4 + 1</div>
+          <div class="stat-desc">api · web · sync · desktop</div>
+        </div>
+        <div class="stat bg-base-100 rounded-box border border-base-content/10 p-4">
+          <div class="stat-title text-xs">Postgres tables</div>
+          <div class="stat-value text-2xl text-primary">7</div>
+          <div class="stat-desc">+ folders &amp; trash</div>
+        </div>
+        <div class="stat bg-base-100 rounded-box border border-base-content/10 p-4">
+          <div class="stat-title text-xs">Max file size</div>
+          <div class="stat-value text-2xl text-primary">50 GB</div>
+          <div class="stat-desc">10MB chunks, resumable</div>
+        </div>
+        <div class="stat bg-base-100 rounded-box border border-base-content/10 p-4">
+          <div class="stat-title text-xs">Design patterns</div>
+          <div class="stat-value text-2xl text-primary">12</div>
+          <div class="stat-desc">documented w/ code</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-6 py-12 space-y-20">
+
+    <!-- ===================== NAV ===================== -->
+    <nav class="flex flex-wrap gap-2 text-sm">
+      <a href="#arch" class="btn btn-sm btn-outline">Architecture</a>
+      <a href="#flows" class="btn btn-sm btn-outline">Core flows</a>
+      <a href="#nfr" class="btn btn-sm btn-primary">NFRs ★</a>
+      <a href="#patterns" class="btn btn-sm btn-outline">Patterns</a>
+      <a href="#data" class="btn btn-sm btn-outline">Data model</a>
+    </nav>
+
+    <!-- ===================== ARCHITECTURE ===================== -->
+    <section id="arch" class="scroll-mt-6">
+      <h2 class="text-3xl font-bold mb-2">System architecture</h2>
+      <p class="text-base-content/70 mb-8 max-w-3xl">
+        The API is a thin control plane: it handles metadata, auth, permissions and event fan-out, but
+        <strong>never sits in the data path</strong>. File bytes flow directly between clients and object
+        storage via presigned URLs.
+      </p>
+
+      <div class="card bg-base-200/40 border border-base-content/10 p-4 lg:p-8 mb-8">
+        <div class="mermaid">
+flowchart TB
+    subgraph clients["Clients"]
+      W["Web app<br/><span style='font-size:11px'>React · Vite · Zustand</span>"]
+      SY["Sync client<br/><span style='font-size:11px'>Node · chokidar</span>"]
+      D["Desktop app<br/><span style='font-size:11px'>Electron · safeStorage</span>"]
+    end
+
+    API["API server<br/><span style='font-size:11px'>Node · Express · TS</span><br/><span style='font-size:11px'>auth · metadata · SSE fan-out</span>"]
+
+    subgraph data["Data plane"]
+      PG[("PostgreSQL<br/><span style='font-size:11px'>metadata · perms · sync_log</span>")]
+      S3[("MinIO / S3<br/><span style='font-size:11px'>raw file bytes</span>")]
+      CDN["CloudFront<br/><span style='font-size:11px'>lazy edge cache</span>"]
+    end
+
+    W -->|"REST + JWT"| API
+    SY -->|"REST + SSE"| API
+    D -->|"REST + SSE"| API
+
+    API -->|"typed SQL (pgtyped)"| PG
+    API -.->|"presigned URLs only"| S3
+
+    W ==>|"chunks direct (presigned)"| S3
+    SY ==>|"chunks direct (presigned)"| S3
+    W -->|"download"| CDN
+    CDN -.->|"cache miss"| S3
+
+    API -->|"broadcastSyncEvent"| W
+    API -->|"broadcastSyncEvent"| SY
+    API -->|"broadcastSyncEvent"| D
+
+    classDef store fill:#181510,stroke:#a1832f,color:#e7c98f;
+    classDef svc fill:#232019,stroke:#8a7a52,color:#e7c98f;
+    class PG,S3,CDN store;
+    class API,W,SY,D svc;
+        </div>
+        <p class="text-xs text-base-content/50 mt-2 text-center">
+          Solid double arrows = bulk bytes (never through API) · dotted = presign/cache-miss · thin = control &amp; events
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div class="card card-hover bg-base-100 border border-base-content/10 p-5">
+          <div class="flex items-center gap-2 mb-1"><span class="badge badge-primary badge-sm mono">apps/api</span></div>
+          <h3 class="font-bold">Control plane</h3>
+          <p class="text-sm text-base-content/70 mt-1">Express routes for auth, upload, files, folders, sharing, trash, search, sync. Middleware chain: <span class="mono text-xs">requireAuth → requireFileAccess</span>. SSE registry lives here.</p>
+        </div>
+        <div class="card card-hover bg-base-100 border border-base-content/10 p-5">
+          <span class="badge badge-secondary badge-sm mono">apps/web</span>
+          <h3 class="font-bold mt-1">Browser UI</h3>
+          <p class="text-sm text-base-content/70 mt-1">React 18 + Zustand. Dashboard, chunked uploader, share modal, breadcrumb folders, trash, search. Talks REST + subscribes to SSE.</p>
+        </div>
+        <div class="card card-hover bg-base-100 border border-base-content/10 p-5">
+          <span class="badge badge-accent badge-sm mono">apps/sync</span>
+          <h3 class="font-bold mt-1">Headless sync client</h3>
+          <p class="text-sm text-base-content/70 mt-1"><span class="mono text-xs">chokidar</span> watches <span class="mono text-xs">sync-folder/</span>, debounces 500ms, diffs SHA-256, uploads changes. Downloads remote changes on SSE/poll.</p>
+        </div>
+        <div class="card card-hover bg-base-100 border border-base-content/10 p-5">
+          <span class="badge badge-info badge-sm mono">apps/desktop</span>
+          <h3 class="font-bold mt-1">Electron app</h3>
+          <p class="text-sm text-base-content/70 mt-1">Main/renderer split via <span class="mono text-xs">contextBridge</span>. JWT encrypted in OS keychain (<span class="mono text-xs">safeStorage</span>). Live status dot, activity feed, stats.</p>
+        </div>
+        <div class="card card-hover bg-base-100 border border-base-content/10 p-5">
+          <span class="badge badge-neutral badge-sm mono">packages/shared</span>
+          <h3 class="font-bold mt-1">Shared types</h3>
+          <p class="text-sm text-base-content/70 mt-1">One source of truth for <span class="mono text-xs">User, File, UploadJob, ShareRecord, SyncEvent</span> across every app.</p>
+        </div>
+        <div class="card card-hover bg-base-100 border border-primary/40 p-5">
+          <span class="badge badge-soft badge-primary badge-sm">principle</span>
+          <h3 class="font-bold mt-1">API out of the data path</h3>
+          <p class="text-sm text-base-content/70 mt-1">The API moves ~200 bytes of metadata per request regardless of file size. Bytes go client ⇄ S3 directly.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FLOWS ===================== -->
+    <section id="flows" class="scroll-mt-6">
+      <h2 class="text-3xl font-bold mb-2">Core flows</h2>
+      <p class="text-base-content/70 mb-8 max-w-3xl">The two flows that carry the most engineering weight: chunked resumable upload and real-time sync with automatic fallback.</p>
+
+      <div class="grid lg:grid-cols-2 gap-6">
+        <div class="card bg-base-200/40 border border-base-content/10 p-4 lg:p-6">
+          <h3 class="font-bold text-lg mb-3">Chunked resumable upload</h3>
+          <div class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant A as API
+    participant S as S3/MinIO
+    C->>A: POST /upload/init
+    A->>S: CreateMultipartUpload
+    A->>A: INSERT uploads row
+    A-->>C: uploadId + presigned chunk URLs
+    Note over C,S: chunks PUT directly, in parallel
+    C->>S: PUT chunk 1..N (presigned)
+    C->>A: POST /upload/complete (eTags)
+    A->>S: CompleteMultipartUpload
+    A->>A: INSERT file + sync_log (txn)
+    A-->>C: file metadata
+    A->>C: broadcastSyncEvent →
+          </div>
+          <div class="rule pl-3 mt-4 text-sm text-base-content/70 space-y-1">
+            <p><strong>Resume:</strong> <span class="mono text-xs">GET /upload/status/:id</span> returns completed chunks; interrupted uploads skip them.</p>
+            <p><strong>Dedup:</strong> SHA-256 computed client-side; unchanged content is never re-sent.</p>
+          </div>
+        </div>
+
+        <div class="card bg-base-200/40 border border-base-content/10 p-4 lg:p-6">
+          <h3 class="font-bold text-lg mb-3">Sync: SSE primary + polling fallback</h3>
+          <div class="mermaid">
+stateDiagram-v2
+    [*] --> Connecting
+    Connecting --> SSE_Live: onopen
+    SSE_Live --> Polling: onerror / drop
+    Polling --> SSE_Live: reconnect (onopen)
+    SSE_Live --> Apply: event received
+    Polling --> Apply: GET /sync/changes
+    Apply --> SSE_Live: download / delete local
+    note right of Polling
+      30s interval
+      retry SSE every 5s
+    end note
+    note right of Apply
+      markAsDownloaded
+      prevents echo re-upload
+    end note
+          </div>
+          <div class="rule pl-3 mt-4 text-sm text-base-content/70 space-y-1">
+            <p><strong>Local → remote:</strong> chokidar event → 500ms debounce → checksum diff → chunked upload.</p>
+            <p><strong>Echo prevention:</strong> downloaded files are marked so the watcher does not re-upload them.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deep dive: chunk crash & resume -->
+      <div class="card bg-base-200/40 border border-primary/40 p-5 lg:p-7 mt-6">
+        <div class="flex flex-wrap items-center gap-3 mb-1">
+          <h3 class="font-bold text-xl">Deep dive: what happens if a chunk crashes mid-upload?</h3>
+          <span class="badge badge-soft badge-primary">your question</span>
+        </div>
+        <p class="text-sm text-base-content/70 mb-5 max-w-4xl">Following the real code path in <span class="mono text-xs">apps/web/src/lib/upload.ts</span> and <span class="mono text-xs">apps/api/src/routes/upload.ts</span>. Short version: the checksum is <em>not</em> what resumes an upload - it is a whole-file integrity/dedup hash. Resume is driven by the multipart <span class="mono text-xs">uploadId</span> as an idempotency key.</p>
+
+        <div class="grid lg:grid-cols-2 gap-6">
+          <!-- what actually happens -->
+          <div>
+            <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-2">Failure sequence (as coded today)</div>
+            <ul class="steps steps-vertical">
+              <li class="step step-primary" data-content="1"><div class="text-left text-sm"><strong>Chunks upload in batches of 3</strong> via <span class="mono text-xs">Promise.all(batch)</span>, each PUT straight to S3.</div></li>
+              <li class="step step-error" data-content="✕"><div class="text-left text-sm"><strong>One chunk's PUT rejects.</strong> <span class="mono text-xs">Promise.all</span> rejects the whole batch, so <span class="mono text-xs">uploadFile()</span> throws and the loop stops.</div></li>
+              <li class="step step-warning" data-content="!"><div class="text-left text-sm"><strong>Chunks already PUT survive</strong> as parts inside the open S3 multipart session, but the client's in-memory <span class="mono text-xs">parts[]</span> array is lost.</div></li>
+              <li class="step" data-content="↺"><div class="text-left text-sm"><strong>On retry,</strong> the intended design: call <span class="mono text-xs">GET /upload/status/:uploadId</span>, get completed part numbers + eTags, skip them, resume from the first gap.</div></li>
+            </ul>
+          </div>
+
+          <!-- checksum role + design intent -->
+          <div class="space-y-4">
+            <div>
+              <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-2">The checksum's actual role</div>
+              <p class="text-sm text-base-content/70">A single SHA-256 over the <em>whole file</em>, computed before upload and stored in <span class="mono text-xs">files.checksum</span>. It does two things - neither is per-chunk resume:</p>
+              <ul class="text-sm text-base-content/70 list-disc pl-4 mt-2 space-y-1">
+                <li><strong>Dedup:</strong> the sync client compares it to the last known checksum and skips re-upload when only metadata changed.</li>
+                <li><strong>Integrity:</strong> proves the assembled object matches what the client intended to send.</li>
+              </ul>
+              <p class="text-sm text-base-content/70 mt-2">Resume is keyed on <span class="mono text-xs">uploadId</span> + part numbers, <em>not</em> the checksum. S3 itself verifies each part via its per-part ETag on <span class="mono text-xs">CompleteMultipartUpload</span>.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="alert alert-warning alert-soft mt-5 items-start">
+          <div class="text-sm">
+            <p class="font-semibold mb-1">⚠ Honest gap: resume is scaffolded, not fully wired</p>
+            <p class="text-base-content/80">The <span class="mono text-xs">uploads.uploaded_chunks</span> column is read by the client but <strong>never written</strong> after it is initialized to <span class="mono text-xs">[]</span> - so <span class="mono text-xs">GET /upload/status</span> always returns empty. Worse, the client calls <span class="mono text-xs">/upload/init</span> fresh on every attempt, minting a <em>new</em> <span class="mono text-xs">uploadId</span> and a new S3 session. As written, a crash mid-upload means the next attempt <strong>restarts from scratch</strong> and orphans the previous multipart parts.</p>
+            <p class="text-base-content/80 mt-2"><strong>To make it real, two pieces are missing:</strong> (1) persist each completed part's eTag into <span class="mono text-xs">uploaded_chunks</span> after every chunk (or query S3 <span class="mono text-xs">ListParts</span> on resume), and (2) look up an existing in-progress <span class="mono text-xs">upload</span> row for the file+checksum and reuse its <span class="mono text-xs">uploadId</span> instead of re-initing.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== NFR (STAR SECTION) ===================== -->
+    <section id="nfr" class="scroll-mt-6">
+      <div class="flex items-center gap-3 mb-2">
+        <h2 class="text-3xl font-bold">How the NFRs are addressed</h2>
+        <span class="badge badge-primary">the ask</span>
+      </div>
+      <p class="text-base-content/70 mb-8 max-w-3xl">
+        The design spec names five non-functional requirements. Each maps to concrete, verifiable
+        implementation choices in the codebase - shown below with the exact mechanism and where it lives.
+      </p>
+
+      <div class="space-y-5">
+
+        <!-- Availability -->
+        <div class="card bg-base-100 border border-base-content/10 rule">
+          <div class="p-5 lg:p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <h3 class="text-xl font-bold">1 · High availability</h3>
+              <span class="badge badge-soft badge-warning">availability &gt; consistency</span>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4 mt-3">
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Mechanism</div>
+                <p class="text-sm text-base-content/70">Graceful degradation over hard failure. Sync never goes dark: if SSE drops, the client silently falls back to 30s polling and keeps retrying SSE.</p>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Design choices</div>
+                <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+                  <li>API off the data path → S3 outages don't take down metadata ops</li>
+                  <li>Best-effort SSE: a dead client stream is pruned, never blocks others</li>
+                  <li>S3 delete failure is logged but DB stays consistent</li>
+                </ul>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Where</div>
+                <ul class="text-sm mono text-xs text-base-content/60 space-y-1">
+                  <li>apps/sync/src/index.ts</li>
+                  <li>apps/api/src/routes/sync.ts</li>
+                  <li>apps/api/src/routes/files.ts</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Large file -->
+        <div class="card bg-base-100 border border-base-content/10 rule">
+          <div class="p-5 lg:p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <h3 class="text-xl font-bold">2 · Large file support</h3>
+              <span class="badge badge-soft badge-info">up to 50 GB</span>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4 mt-3">
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Mechanism</div>
+                <p class="text-sm text-base-content/70">S3 multipart upload. Client slices the file into 10MB <span class="mono text-xs">Blob</span> chunks and PUTs each directly to storage via presigned URLs.</p>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Why it scales</div>
+                <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+                  <li>API never buffers file bytes - constant ~200B/request</li>
+                  <li>Chunks upload in parallel for throughput</li>
+                  <li>No server memory pressure regardless of size</li>
+                </ul>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Where</div>
+                <ul class="text-sm mono text-xs text-base-content/60 space-y-1">
+                  <li>apps/web/src/lib/chunker.ts</li>
+                  <li>apps/web/src/lib/upload.ts</li>
+                  <li>apps/api/src/storage.ts</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reliability -->
+        <div class="card bg-base-100 border border-base-content/10 rule">
+          <div class="p-5 lg:p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <h3 class="text-xl font-bold">3 · Reliability</h3>
+              <span class="badge badge-soft badge-success">recoverable & consistent</span>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4 mt-3">
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Mechanism</div>
+                <p class="text-sm text-base-content/70">SHA-256 integrity + transactional writes, with a resumable-upload scaffold (idempotency key + status endpoint). See the "Honest gap" note in Core flows - resume is designed but not yet fully wired.</p>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Design choices</div>
+                <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+                  <li><strong>Idempotency key</strong>: <span class="mono text-xs">uploads</span> table tracks completed chunks</li>
+                  <li><strong>Transactional outbox</strong>: DB commit before SSE/S3 side effects</li>
+                  <li><strong>Checksum</strong> detects corruption &amp; prevents redundant writes</li>
+                  <li>Trash = soft delete; 30-day window before purge</li>
+                </ul>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Where</div>
+                <ul class="text-sm mono text-xs text-base-content/60 space-y-1">
+                  <li>apps/api/migrations/003_*.sql</li>
+                  <li>apps/api/src/routes/files.ts</li>
+                  <li>apps/api/src/purge.ts</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Low latency -->
+        <div class="card bg-base-100 border border-base-content/10 rule">
+          <div class="p-5 lg:p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <h3 class="text-xl font-bold">4 · Low latency</h3>
+              <span class="badge badge-soft badge-secondary">fast up · down · sync</span>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4 mt-3">
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Mechanism</div>
+                <p class="text-sm text-base-content/70">Cut the middleman everywhere. Direct-to-S3 transfer, CDN edge downloads, SSE push, and indexed queries.</p>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Design choices</div>
+                <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+                  <li>Parallel chunk upload; presigned download from CDN edge</li>
+                  <li>SSE push = near-instant cross-device notification</li>
+                  <li>Postgres GIN FTS + indexes for search &amp; sync_log</li>
+                </ul>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Where</div>
+                <ul class="text-sm mono text-xs text-base-content/60 space-y-1">
+                  <li>apps/api/src/routes/sync.ts</li>
+                  <li>apps/api/migrations/009_*.sql</li>
+                  <li>storage.ts (presignDownload)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cost -->
+        <div class="card bg-base-100 border border-base-content/10 rule">
+          <div class="p-5 lg:p-6">
+            <div class="flex flex-wrap items-center gap-3 mb-2">
+              <h3 class="text-xl font-bold">5 · Cost-effective</h3>
+              <span class="badge badge-soft badge-error">lazy CDN</span>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4 mt-3">
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Mechanism</div>
+                <p class="text-sm text-base-content/70">Cache on access, not proactively. CloudFront caches a file only when it's first requested - no cost for cold objects.</p>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Design choices</div>
+                <ul class="text-sm text-base-content/70 list-disc pl-4 space-y-1">
+                  <li>No egress through the API (S3 handles bytes)</li>
+                  <li>Dedup skips redundant uploads &amp; storage</li>
+                  <li>Single shared connection pool + S3 client (Singleton)</li>
+                </ul>
+              </div>
+              <div>
+                <div class="text-xs uppercase tracking-wide text-primary/80 font-semibold mb-1">Where</div>
+                <ul class="text-sm mono text-xs text-base-content/60 space-y-1">
+                  <li>design spec §8 (CDN lazy)</li>
+                  <li>apps/api/src/db.ts</li>
+                  <li>apps/api/src/storage.ts</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="alert alert-soft alert-warning mt-6">
+        <span class="text-sm">
+          <strong>Honest note:</strong> CloudFront lazy caching and the 50GB ceiling are <em>design-level</em> decisions
+          (prod uses S3 + CloudFront; local dev uses MinIO). The availability &amp; reliability mechanisms - resumable upload,
+          polling fallback, transactional outbox, soft-delete - are implemented and tested in the codebase.
+        </span>
+      </div>
+    </section>
+
+    <!-- ===================== PATTERNS ===================== -->
+    <section id="patterns" class="scroll-mt-6">
+      <h2 class="text-3xl font-bold mb-2">Design patterns in play</h2>
+      <p class="text-base-content/70 mb-6 max-w-3xl">Twelve documented patterns, each tied to a real file. These are what make the NFRs hold together.</p>
+      <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+        <table class="table table-zebra">
+          <thead>
+            <tr><th>Pattern</th><th>Serves</th><th>Where</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="font-semibold">Middleware Chain</td><td>Separation of concerns</td><td class="mono text-xs">requireAuth → handler</td></tr>
+            <tr><td class="font-semibold">Middleware Factory</td><td>Reusable authz</td><td class="mono text-xs">requireFileAccess('viewer')</td></tr>
+            <tr><td class="font-semibold">Facade</td><td>Swap S3 → GCS in one file</td><td class="mono text-xs">storage.ts</td></tr>
+            <tr><td class="font-semibold">Observer (SSE)</td><td>Low-latency fan-out</td><td class="mono text-xs">sync.ts · clients Map</td></tr>
+            <tr><td class="font-semibold">Strategy</td><td>Availability (SSE↔poll)</td><td class="mono text-xs">sync/index.ts</td></tr>
+            <tr><td class="font-semibold">Repository (pgtyped)</td><td>Typed SQL, no ORM</td><td class="mono text-xs">*.sql + *.queries.ts</td></tr>
+            <tr><td class="font-semibold">Debounce</td><td>Fewer redundant uploads</td><td class="mono text-xs">watcher.ts · 500ms</td></tr>
+            <tr><td class="font-semibold">Idempotency Key</td><td>Resumable upload</td><td class="mono text-xs">uploads.upload_id</td></tr>
+            <tr><td class="font-semibold">Singleton</td><td>Cost / connection reuse</td><td class="mono text-xs">db.ts · storage.ts</td></tr>
+            <tr><td class="font-semibold">Guard Clause</td><td>Readable handlers</td><td class="mono text-xs">every route</td></tr>
+            <tr><td class="font-semibold">Transactional Outbox</td><td>Consistency on delete</td><td class="mono text-xs">files.ts DELETE</td></tr>
+            <tr><td class="font-semibold">Content-Addressable</td><td>Dedup + integrity</td><td class="mono text-xs">SHA-256 checksum</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== DATA MODEL ===================== -->
+    <section id="data" class="scroll-mt-6">
+      <h2 class="text-3xl font-bold mb-2">Data model</h2>
+      <p class="text-base-content/70 mb-8 max-w-3xl">Seven tables. Metadata only - bytes live in object storage. Later migrations added folders, soft-delete columns, and search indexes.</p>
+      <div class="card bg-base-200/40 border border-base-content/10 p-4 lg:p-8">
+        <div class="mermaid">
+erDiagram
+    users ||--o{ files : owns
+    users ||--o{ folders : owns
+    folders ||--o{ folders : nests
+    folders ||--o{ files : contains
+    files ||--o{ uploads : "in-progress"
+    files ||--o{ shared_files : shared
+    files ||--o{ sync_log : logs
+    users ||--o{ shared_files : "shared with"
+
+    users {
+        uuid id PK
+        string email UK
+        string password_hash
+    }
+    files {
+        uuid id PK
+        uuid owner_id FK
+        uuid folder_id FK
+        string name
+        bigint size_bytes
+        string storage_key
+        string checksum
+        timestamptz trashed_at
+    }
+    folders {
+        uuid id PK
+        uuid owner_id FK
+        uuid parent_id FK
+        string name
+        timestamptz trashed_at
+    }
+    uploads {
+        uuid id PK
+        uuid file_id FK
+        string upload_id
+        int total_chunks
+        jsonb uploaded_chunks
+        string status
+    }
+    shared_files {
+        uuid id PK
+        uuid file_id FK
+        uuid shared_with FK
+        string share_type
+        string role
+        string share_token
+        timestamptz expires_at
+    }
+    sync_log {
+        uuid id PK
+        uuid user_id FK
+        uuid file_id FK
+        string event_type
+        timestamptz created_at
+    }
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 text-sm">
+        <div class="card bg-base-100 border border-base-content/10 p-4"><span class="badge badge-soft badge-primary badge-sm mb-1">access control</span><p class="text-base-content/70">Owner → user share → link share → 403, checked on every file request.</p></div>
+        <div class="card bg-base-100 border border-base-content/10 p-4"><span class="badge badge-soft badge-secondary badge-sm mb-1">folders</span><p class="text-base-content/70">Self-referencing <span class="mono text-xs">parent_id</span> gives arbitrary nesting + breadcrumb nav.</p></div>
+        <div class="card bg-base-100 border border-base-content/10 p-4"><span class="badge badge-soft badge-accent badge-sm mb-1">trash</span><p class="text-base-content/70"><span class="mono text-xs">trashed_at</span> soft-delete; restore, permanent delete, 30-day purge.</p></div>
+        <div class="card bg-base-100 border border-base-content/10 p-4"><span class="badge badge-soft badge-info badge-sm mb-1">search</span><p class="text-base-content/70">Postgres GIN FTS + ILIKE over names, with type/date filters.</p></div>
+      </div>
+    </section>
+
+    <footer class="border-t border-base-content/10 pt-6 text-sm text-base-content/50">
+      Generated from <span class="mono">README.md</span>, <span class="mono">docs/superpowers/specs</span>, <span class="mono">docs/design-patterns.md</span>, and the source tree.
+      Design source: Lavish-recommended Tailwind + DaisyUI CDN (the app's own UI is unstyled vanilla CSS, so this is a neutral technical surface).
+    </footer>
+
+  </main>
+</body>
+</html>

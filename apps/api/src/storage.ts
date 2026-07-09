@@ -4,6 +4,8 @@ import {
   UploadPartCommand,
   CompleteMultipartUploadCommand,
   GetObjectCommand,
+  ListPartsCommand,
+  type ListPartsCommandOutput,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
@@ -56,4 +58,35 @@ export async function completeMultipart(
 export async function presignDownload(key: string, expiresIn = 3600): Promise<string> {
   const cmd = new GetObjectCommand({ Bucket: BUCKET, Key: key });
   return getSignedUrl(s3, cmd, { expiresIn });
+}
+
+export async function listParts(
+  key: string,
+  uploadId: string,
+): Promise<{ PartNumber: number; ETag: string }[]> {
+  // S3 caps ListParts at 1000 per page; a 50GB file at 10MB chunks is ~5000 parts
+  // so we must paginate via PartNumberMarker / NextPartNumberMarker.
+  const parts: { PartNumber: number; ETag: string }[] = [];
+  let partNumberMarker: string | undefined = undefined;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const res: ListPartsCommandOutput = await s3.send(
+      new ListPartsCommand({
+        Bucket: BUCKET,
+        Key: key,
+        UploadId: uploadId,
+        PartNumberMarker: partNumberMarker,
+      }),
+    );
+    for (const p of res.Parts ?? []) {
+      if (p.PartNumber !== undefined && p.ETag !== undefined) {
+        // Keep the ETag exactly as S3 returns it (quotes included) so
+        // CompleteMultipartUpload matches.
+        parts.push({ PartNumber: p.PartNumber, ETag: p.ETag });
+      }
+    }
+    if (!res.IsTruncated) break;
+    partNumberMarker = res.NextPartNumberMarker;
+  }
+  return parts;
 }
