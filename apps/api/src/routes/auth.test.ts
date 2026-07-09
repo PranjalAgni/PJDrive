@@ -3,12 +3,19 @@ import request from 'supertest';
 import { app } from '../index';
 import { pool } from '../db';
 
+const AUTH_TEST_EMAILS = [
+  'test-reg@example.com',
+  'test-dup@example.com',
+  'test-login@example.com',
+  'test-mw@example.com',
+];
+
 beforeAll(async () => {
-  await pool.query('DELETE FROM users WHERE email LIKE $1', ['test-%@example.com']);
+  await pool.query('DELETE FROM users WHERE email = ANY($1)', [AUTH_TEST_EMAILS]);
 });
 
 afterAll(async () => {
-  await pool.query('DELETE FROM users WHERE email LIKE $1', ['test-%@example.com']);
+  await pool.query('DELETE FROM users WHERE email = ANY($1)', [AUTH_TEST_EMAILS]);
   await pool.end();
 });
 

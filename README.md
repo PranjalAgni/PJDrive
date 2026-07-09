@@ -22,7 +22,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 
 ### Web app
 - **Chunked resumable upload** — files split into 10MB chunks, SHA-256 checksum, uploaded directly to S3/MinIO via presigned URLs (API never proxies bytes)
-- **Resume support** — interrupted uploads resume from the last successful chunk, not from scratch
+- **Resume support** — interrupted uploads reuse the existing S3 multipart session (deduped on owner + checksum + shape + destination) and re-send only the chunks S3 is still missing, not from scratch
 - **Download** — short-lived presigned URLs, CDN-cacheable
 - **File management** - list, download, rename, move, delete files from the dashboard
 - **Nested folders** - create folders inside folders, navigate the hierarchy, move files/folders between them, breadcrumb navigation; moving a folder into its own subtree is rejected
@@ -218,7 +218,7 @@ Raycast and Spotlight will discover it automatically within seconds of copying t
 pjdrive/
 ├── apps/
 │   ├── api/
-│   │   ├── migrations/          # SQL schema (001–009)
+│   │   ├── migrations/          # SQL schema (001–010)
 │   │   ├── src/
 │   │   │   ├── routes/          # auth, upload, files, folders, trash, search, sharing, sync
 │   │   │   │   ├── *.ts         # route handlers
@@ -422,7 +422,7 @@ Chunked multipart upload solves both problems:
 3. The client uploads each chunk **directly to S3** via `axios.put(presignedUrl, chunk)` — the API never touches the bytes
 4. The client calls `/upload/complete` with the ETags returned by S3, and S3 assembles the file
 
-The API only handles ~200 bytes of metadata per request regardless of file size. Resumability comes for free: the `uploads` table tracks which chunks completed, so an interrupted upload picks up from the last successful chunk.
+The API only handles ~200 bytes of metadata per request regardless of file size. Resumability comes from S3 itself: a retried `/upload/init` (matched on owner + checksum + total chunks + file name + folder) reuses the existing multipart session, and `/upload/status` calls S3 `ListParts` to report exactly which chunks already landed — so an interrupted upload re-sends only the missing chunks.
 
 ### Why SSE instead of WebSockets for sync?
 
@@ -461,7 +461,7 @@ See [`docs/design-patterns.md`](docs/design-patterns.md) for a full walkthrough 
 |---|---|
 | Middleware Chain | `requireAuth` → route handler |
 | Middleware Factory | `requireFileAccess('viewer')` returns a configured middleware |
-| Facade | `storage.ts` hides the S3 SDK behind 4 simple functions |
+| Facade | `storage.ts` hides the S3 SDK behind 5 simple functions |
 | Observer | SSE broadcast — `clients` Map + `broadcastSyncEvent` |
 | Strategy | Sync: SSE (primary) swaps to polling (fallback) at runtime |
 | Repository | pgtyped `.sql` files separate SQL from business logic |

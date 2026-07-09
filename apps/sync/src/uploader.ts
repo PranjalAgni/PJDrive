@@ -52,10 +52,25 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
   });
 
   const { uploadId, chunkUrls } = initData as { uploadId: string; chunkUrls: string[] };
-  const parts: { partNumber: number; eTag: string }[] = [];
+
+  // Resume: /upload/status returns parts already in S3 for this multipart
+  // session (empty on a fresh upload). Seed `parts` with those and skip
+  // re-uploading their chunk numbers.
+  const { data: statusData } = await getApi().get(`/upload/status/${uploadId}`);
+  const alreadyUploadedParts: { partNumber: number; eTag: string }[] =
+    (statusData.uploadedChunks || []) as { partNumber: number; eTag: string }[];
+  const alreadyUploadedNumbers = new Set(alreadyUploadedParts.map((p) => p.partNumber));
+  const parts: { partNumber: number; eTag: string }[] = [...alreadyUploadedParts];
+
   const fd = fs.openSync(filePath, 'r');
   try {
     for (let i = 0; i < totalChunks; i++) {
+      const partNumber = i + 1;
+      if (alreadyUploadedNumbers.has(partNumber)) {
+        console.log(`[sync] skipping already-uploaded chunk ${partNumber}/${totalChunks} of ${fileName}`);
+        continue;
+      }
+
       const start = i * CHUNK_SIZE;
       const end = Math.min(start + CHUNK_SIZE, stat.size);
       const chunkBuf = Buffer.allocUnsafe(end - start);
@@ -65,9 +80,9 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
         headers: { 'Content-Type': 'application/octet-stream' },
       });
       const eTag = res.headers.etag;
-      if (!eTag) throw new Error(`Missing ETag for chunk ${i + 1} of ${fileName}`);
-      parts.push({ partNumber: i + 1, eTag });
-      console.log(`[sync] uploaded chunk ${i + 1}/${totalChunks} of ${fileName}`);
+      if (!eTag) throw new Error(`Missing ETag for chunk ${partNumber} of ${fileName}`);
+      parts.push({ partNumber, eTag });
+      console.log(`[sync] uploaded chunk ${partNumber}/${totalChunks} of ${fileName}`);
     }
   } finally {
     fs.closeSync(fd);
