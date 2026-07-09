@@ -56,3 +56,70 @@ describe('GET /upload/status/:uploadId', () => {
     expect(res.body.totalChunks).toBe(1);
   });
 });
+
+describe('POST /upload/chunk', () => {
+  async function initUpload(totalChunks: number) {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'chunk-test.txt', mimeType: 'text/plain', sizeBytes: totalChunks * 10485760, totalChunks, checksum: 'chk789' });
+    return initRes.body.uploadId as string;
+  }
+
+  it('requires auth', async () => {
+    const res = await request(app).post('/upload/chunk').send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('records a completed chunk so it surfaces in status and enables resume', async () => {
+    const uploadId = await initUpload(2);
+
+    const chunkRes = await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-abc"' });
+    expect(chunkRes.status).toBe(200);
+
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.uploadedChunks).toEqual(['1:"etag-abc"']);
+    expect(statusRes.body.totalChunks).toBe(2);
+  });
+
+  it('is idempotent - recording the same chunk twice does not duplicate it', async () => {
+    const uploadId = await initUpload(2);
+
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-dup"' });
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-dup"' });
+
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.uploadedChunks).toEqual(['1:"etag-dup"']);
+  });
+
+  it('rejects recording a chunk for another user\'s upload', async () => {
+    const uploadId = await initUpload(1);
+
+    await pool.query("DELETE FROM users WHERE email = 'other-upload@example.com'");
+    const otherRes = await request(app)
+      .post('/auth/register')
+      .send({ email: 'other-upload@example.com', password: 'password123' });
+    const otherToken = otherRes.body.token;
+
+    const chunkRes = await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-x"' });
+    expect(chunkRes.status).toBe(404);
+
+    await pool.query("DELETE FROM users WHERE email = 'other-upload@example.com'");
+  });
+});

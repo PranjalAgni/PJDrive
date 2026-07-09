@@ -66,6 +66,8 @@ export async function uploadFile(filePath: string, fileName: string): Promise<vo
       });
       const eTag = res.headers.etag;
       if (!eTag) throw new Error(`Missing ETag for chunk ${i + 1} of ${fileName}`);
+      // Persist the completed chunk so a later retry can resume instead of re-uploading it.
+      await getApi().post('/upload/chunk', { uploadId, partNumber: i + 1, eTag });
       parts.push({ partNumber: i + 1, eTag });
       console.log(`[sync] uploaded chunk ${i + 1}/${totalChunks} of ${fileName}`);
     }

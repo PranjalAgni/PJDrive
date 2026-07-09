@@ -373,8 +373,12 @@ Client                         API                    MinIO/S3
   |<── uploadId + chunkUrls ───|<─── uploadId ──────────|
   |                             |                        |
   |─ PUT chunk 1 (presigned) ─────────────────────────>|
-  |─ PUT chunk 2 (presigned) ─────────────────────────>|  parallel
+  |─ POST /upload/chunk (1:etag)>|─ persist to           |  after each
+  |                             |  uploaded_chunks       |  successful PUT
   |─ PUT chunk N (presigned) ─────────────────────────>|
+  |─ POST /upload/chunk (N:etag)>|                        |
+  |                             |                        |
+  |  (on retry: GET /upload/status → skip done chunks)   |
   |                             |                        |
   |─ POST /upload/complete ────>|                        |
   |                             |─ CompleteMultipart ───>|
@@ -420,9 +424,10 @@ Chunked multipart upload solves both problems:
 1. The client splits the file into 10MB `Blob` slices using `file.slice(offset, offset + CHUNK_SIZE)`
 2. The API creates a multipart upload session in S3 and returns presigned PUT URLs — one per chunk
 3. The client uploads each chunk **directly to S3** via `axios.put(presignedUrl, chunk)` — the API never touches the bytes
-4. The client calls `/upload/complete` with the ETags returned by S3, and S3 assembles the file
+4. After each chunk succeeds, the client posts its `partNumber:eTag` to `/upload/chunk`, which the API persists into the `uploads.uploaded_chunks` array
+5. The client calls `/upload/complete` with the ETags returned by S3, and S3 assembles the file
 
-The API only handles ~200 bytes of metadata per request regardless of file size. Resumability comes for free: the `uploads` table tracks which chunks completed, so an interrupted upload picks up from the last successful chunk.
+The API only handles ~200 bytes of metadata per request regardless of file size. Resumability: because each completed chunk's ETag is persisted server-side as soon as it lands, a retry calls `GET /upload/status/:uploadId`, filters out chunks that already finished, and re-uploads only what is missing — then completes reusing the stored ETags. An interrupted upload picks up from the last successful chunk instead of starting over.
 
 ### Why SSE instead of WebSockets for sync?
 

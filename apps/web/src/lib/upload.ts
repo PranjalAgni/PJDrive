@@ -59,6 +59,8 @@ export async function uploadFile(
         });
         const eTag = res.headers.etag;
         if (!eTag) throw new Error(`Missing ETag header for chunk ${partNumber}. Check S3 CORS ExposeHeaders config.`);
+        // Persist the completed chunk so a later retry can resume instead of re-uploading it.
+        await apiClient.post('/upload/chunk', { uploadId, partNumber, eTag });
         return { partNumber, eTag };
       })
     );

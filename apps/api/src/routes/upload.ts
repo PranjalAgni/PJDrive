@@ -9,11 +9,12 @@ import {
   insertUpload,
   getUploadStatus,
   getUploadWithFile,
+  recordChunk,
   completeUpload,
   insertSyncLogCreated,
   getFileById,
 } from './upload.queries';
-import { InitUploadBody, CompleteUploadBody, parseBody } from '../schemas';
+import { InitUploadBody, RecordChunkBody, CompleteUploadBody, parseBody } from '../schemas';
 
 export const uploadRouter = Router();
 
@@ -60,6 +61,31 @@ uploadRouter.get('/status/:uploadId', requireAuth, async (req: AuthRequest, res)
     return res.json({ uploadedChunks: rows[0].uploaded_chunks, totalChunks: rows[0].total_chunks });
   } catch (err) {
     console.error('upload status error:', err);
+    return res.status(500).json({ error: 'internal server error' });
+  }
+});
+
+uploadRouter.post('/chunk', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const parsed = parseBody(RecordChunkBody, req.body, res);
+    if (!parsed.ok) return;
+    const { uploadId, partNumber, eTag } = parsed.data;
+
+    const rows = await recordChunk.run(
+      {
+        uploadId,
+        ownerId: req.userId!,
+        partNumber: String(partNumber),
+        chunkEntry: `${partNumber}:${eTag}`,
+      },
+      pool,
+    );
+    // No row updated => upload doesn't exist, isn't owned by this user, or is already complete.
+    if (rows.length === 0) return res.status(404).json({ error: 'upload not found' });
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('upload chunk error:', err);
     return res.status(500).json({ error: 'internal server error' });
   }
 });

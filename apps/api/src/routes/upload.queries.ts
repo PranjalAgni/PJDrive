@@ -103,6 +103,43 @@ const getUploadStatusIR: any = {"usedParamSet":{"uploadId":true,"ownerId":true},
 export const getUploadStatus = new PreparedQuery<IGetUploadStatusParams,IGetUploadStatusResult>(getUploadStatusIR);
 
 
+/** 'RecordChunk' parameters type */
+export interface IRecordChunkParams {
+  chunkEntry?: string | null | void;
+  ownerId?: string | null | void;
+  partNumber?: string | null | void;
+  uploadId?: string | null | void;
+}
+
+/** 'RecordChunk' return type */
+export interface IRecordChunkResult {
+  id: string;
+}
+
+/** 'RecordChunk' query type */
+export interface IRecordChunkQuery {
+  params: IRecordChunkParams;
+  result: IRecordChunkResult;
+}
+
+const recordChunkIR: any = {"usedParamSet":{"partNumber":true,"chunkEntry":true,"uploadId":true,"ownerId":true},"params":[{"name":"partNumber","required":false,"transform":{"type":"scalar"},"locs":[{"a":181,"b":191}]},{"name":"chunkEntry","required":false,"transform":{"type":"scalar"},"locs":[{"a":207,"b":217}]},{"name":"uploadId","required":false,"transform":{"type":"scalar"},"locs":[{"a":237,"b":245}]},{"name":"ownerId","required":false,"transform":{"type":"scalar"},"locs":[{"a":262,"b":269}]}],"statement":"UPDATE uploads\nSET uploaded_chunks = (\n  SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)\n  FROM jsonb_array_elements_text(uploaded_chunks) AS elem\n  WHERE split_part(elem, ':', 1) <> :partNumber\n) || to_jsonb(:chunkEntry::text)\nWHERE id = :uploadId AND owner_id = :ownerId AND status = 'in_progress'\nRETURNING id"};
+
+/**
+ * Query generated from SQL:
+ * ```
+ * UPDATE uploads
+ * SET uploaded_chunks = (
+ *   SELECT COALESCE(jsonb_agg(elem), '[]'::jsonb)
+ *   FROM jsonb_array_elements_text(uploaded_chunks) AS elem
+ *   WHERE split_part(elem, ':', 1) <> :partNumber
+ * ) || to_jsonb(:chunkEntry::text)
+ * WHERE id = :uploadId AND owner_id = :ownerId AND status = 'in_progress'
+ * RETURNING id
+ * ```
+ */
+export const recordChunk = new PreparedQuery<IRecordChunkParams,IRecordChunkResult>(recordChunkIR);
+
+
 /** 'GetUploadWithFile' parameters type */
 export interface IGetUploadWithFileParams {
   ownerId?: string | null | void;
