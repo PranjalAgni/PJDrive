@@ -4,23 +4,26 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 
 ![Architecture](https://github.com/user-attachments/assets/1d589f7a-a2a3-43a9-9193-1ab992bd00e4)
 
+![Chunk Upload](https://github.com/user-attachments/assets/1a7bc93d-9907-4b6b-bcb0-7471ac28a3b4)
+
 ---
 
 ## What's inside
 
-| App / Package | Description |
-|---|---|
-| `apps/api` | Node.js + Express API — auth, upload, files, folders, trash, search, sharing, sync SSE |
-| `apps/web` | React + Vite frontend — dashboard, upload UI, folders, trash, search, sharing, sync |
-| `apps/sync` | Node.js sync client — watches `sync-folder/`, syncs via SSE |
-| `apps/desktop` | Electron desktop app — login, sync status, activity feed |
-| `packages/shared` | Shared TypeScript types across all apps |
+| App / Package     | Description                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| `apps/api`        | Node.js + Express API — auth, upload, files, folders, trash, search, sharing, sync SSE |
+| `apps/web`        | React + Vite frontend — dashboard, upload UI, folders, trash, search, sharing, sync    |
+| `apps/sync`       | Node.js sync client — watches `sync-folder/`, syncs via SSE                            |
+| `apps/desktop`    | Electron desktop app — login, sync status, activity feed                               |
+| `packages/shared` | Shared TypeScript types across all apps                                                |
 
 ---
 
 ## Features
 
 ### Web app
+
 - **Chunked resumable upload** — files split into 10MB chunks, SHA-256 checksum, uploaded directly to S3/MinIO via presigned URLs (API never proxies bytes)
 - **Resume support** — interrupted uploads resume from the last successful chunk, not from scratch
 - **Download** — short-lived presigned URLs, CDN-cacheable
@@ -34,6 +37,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **Shared with me** — view all files other users have shared with you
 
 ### Sync
+
 - **Real-time sync** — SSE push to all connected clients on upload or delete; instant notification
 - **Polling fallback** — automatic 30s poll when SSE connection drops; reconnects when server recovers
 - **Local → remote** — `chokidar` watches `sync-folder/`, debounces 500ms, diffs SHA-256 checksums before uploading (skips unchanged files)
@@ -41,6 +45,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **Echo prevention** — downloaded files are marked to prevent the watcher from re-uploading them
 
 ### API
+
 - **JWT auth** — bcrypt password hashing, 7-day tokens, email normalisation
 - **Zod validation** — all request bodies validated at runtime with a central `schemas.ts`
 - **pgtyped** — all SQL lives in `.sql` files with named queries, fully typed TypeScript generated at codegen time
@@ -48,6 +53,7 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 - **Auto-purge** - a background interval (every 6 hours) permanently removes trashed items older than 30 days; also runnable as a one-off script (`apps/api/src/purge.ts`)
 
 ### Electron desktop app
+
 - **Secure login** — email/password login with JWT stored encrypted in OS keychain via `safeStorage`
 - **Auto-login** — token persists across restarts; dashboard opens directly on launch
 - **Live sync status** — green dot (SSE), amber dot (polling), grey (offline); updates instantly on connection change
@@ -60,19 +66,19 @@ A full-stack Google Drive clone built as a learning project. Covers chunked file
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Monorepo | Turborepo |
-| API | Node.js, TypeScript, Express |
-| Frontend | React 18, Vite, Zustand, Axios |
-| Database | PostgreSQL (6 tables) |
-| Object storage | MinIO (local) / AWS S3 (prod) |
-| CDN | CloudFront (prod) |
-| Typed SQL | pgtyped |
-| Auth | bcrypt + JWT |
-| Sync transport | SSE + polling fallback |
-| File watching | chokidar |
-| Desktop app | Electron 34, contextBridge IPC, safeStorage |
+| Layer          | Technology                                  |
+| -------------- | ------------------------------------------- |
+| Monorepo       | Turborepo                                   |
+| API            | Node.js, TypeScript, Express                |
+| Frontend       | React 18, Vite, Zustand, Axios              |
+| Database       | PostgreSQL (6 tables)                       |
+| Object storage | MinIO (local) / AWS S3 (prod)               |
+| CDN            | CloudFront (prod)                           |
+| Typed SQL      | pgtyped                                     |
+| Auth           | bcrypt + JWT                                |
+| Sync transport | SSE + polling fallback                      |
+| File watching  | chokidar                                    |
+| Desktop app    | Electron 34, contextBridge IPC, safeStorage |
 
 ---
 
@@ -167,6 +173,7 @@ npx electron apps/desktop
 The app stores your JWT in the OS keychain via Electron `safeStorage` — no need to copy tokens manually. On next launch it auto-logs in and starts syncing immediately.
 
 **What the desktop app shows:**
+
 - Login screen → stores credentials encrypted in OS keychain
 - Dashboard with live sync status (green = SSE, amber = polling, grey = offline)
 - Recent activity feed — `↑` uploads, `↓` downloads, updates in real time
@@ -424,6 +431,7 @@ This project was built as a learning exercise. Here are the key concepts and des
 A naive upload sends the whole file to the API server, which then writes it to S3. This breaks at large files — a 50GB file would exhaust the server's memory and a single network hiccup means starting over.
 
 Chunked multipart upload solves both problems:
+
 1. The client splits the file into 10MB `Blob` slices using `file.slice(offset, offset + CHUNK_SIZE)`
 2. The API creates a multipart upload session in S3 and returns presigned PUT URLs — one per chunk
 3. The client uploads each chunk **directly to S3** via `axios.put(presignedUrl, chunk)` — the API never touches the bytes
@@ -452,7 +460,7 @@ pgtyped takes a middle path: you write plain SQL in `.sql` files with named para
 // Before pgtyped
 const { rows } = await pool.query(
   'SELECT id, name FROM files WHERE owner_id = $1',
-  [req.userId]
+  [req.userId],
 );
 // rows is any[] — no type safety
 
@@ -467,20 +475,20 @@ Column renames, missing parameters, and wrong types all become compile errors.
 
 See [`docs/design-patterns.md`](docs/design-patterns.md) for a full walkthrough of the patterns in this codebase, each with exact code examples:
 
-| Pattern | Where |
-|---|---|
-| Middleware Chain | `requireAuth` → route handler |
-| Middleware Factory | `requireFileAccess('viewer')` returns a configured middleware |
-| Facade | `storage.ts` hides the S3 SDK behind 4 simple functions |
-| Observer | SSE broadcast — `clients` Map + `broadcastSyncEvent` |
-| Strategy | Sync: SSE (primary) swaps to polling (fallback) at runtime |
-| Repository | pgtyped `.sql` files separate SQL from business logic |
-| Debounce | `watcher.ts` — 500ms debounce before uploading changed files |
-| Idempotency Key | `uploadId` enables resumable chunked uploads |
-| Singleton | `pool` and `s3` instantiated once, shared everywhere |
-| Guard Clause | Early returns flatten nested conditionals in route handlers |
-| Transactional Outbox | SSE broadcast fires only after DB COMMIT |
-| Content Addressable Storage | SHA-256 checksum prevents redundant uploads |
+| Pattern                     | Where                                                         |
+| --------------------------- | ------------------------------------------------------------- |
+| Middleware Chain            | `requireAuth` → route handler                                 |
+| Middleware Factory          | `requireFileAccess('viewer')` returns a configured middleware |
+| Facade                      | `storage.ts` hides the S3 SDK behind 4 simple functions       |
+| Observer                    | SSE broadcast — `clients` Map + `broadcastSyncEvent`          |
+| Strategy                    | Sync: SSE (primary) swaps to polling (fallback) at runtime    |
+| Repository                  | pgtyped `.sql` files separate SQL from business logic         |
+| Debounce                    | `watcher.ts` — 500ms debounce before uploading changed files  |
+| Idempotency Key             | `uploadId` enables resumable chunked uploads                  |
+| Singleton                   | `pool` and `s3` instantiated once, shared everywhere          |
+| Guard Clause                | Early returns flatten nested conditionals in route handlers   |
+| Transactional Outbox        | SSE broadcast fires only after DB COMMIT                      |
+| Content Addressable Storage | SHA-256 checksum prevents redundant uploads                   |
 
 ### Electron: main process vs renderer
 
@@ -514,11 +522,13 @@ The desktop app needs to make authenticated API requests from the main process, 
 ### Monorepo with Turborepo
 
 Turborepo is a build system for monorepos. It understands the dependency graph between packages and:
+
 - Runs tasks in the right order (build `shared` before `api` or `web`)
 - Caches task outputs — if nothing changed, `turbo build` skips the build entirely
 - Runs independent tasks in parallel
 
 The `--filter` flag targets a specific package:
+
 ```bash
 npx turbo run build --filter=@pjdrive/desktop   # build only desktop
 npx turbo run test --filter=@pjdrive/api        # test only api
