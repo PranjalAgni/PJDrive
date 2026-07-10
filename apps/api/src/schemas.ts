@@ -24,14 +24,24 @@ export const InitUploadBody = z.object({
   folderId: z.string().uuid().nullable().optional(),
 });
 
+export const RecordChunkBody = z.object({
+  uploadId: z.string().uuid({ message: 'uploadId must be a valid UUID' }),
+  partNumber: z.number().int().min(1),
+  eTag: z.string().min(1),
+});
+
 export const CompleteUploadBody = z.object({
   uploadId: z.string().uuid({ message: 'uploadId must be a valid UUID' }),
-  parts: z.array(
-    z.object({
-      partNumber: z.number().int().min(1),
-      eTag: z.string().min(1),
-    })
-  ).min(1, { message: 'parts array must not be empty' }),
+  // Accepted for backward compatibility but ignored: the server reconstructs the
+  // parts list from its own recorded chunk ETags rather than trusting the client.
+  parts: z
+    .array(
+      z.object({
+        partNumber: z.number().int().min(1),
+        eTag: z.string().min(1),
+      })
+    )
+    .optional(),
 });
 
 // ─── Sharing ─────────────────────────────────────────────────────────────────
@@ -95,6 +105,7 @@ export const SyncChangesQuery = z.object({
 export type RegisterBodyType = z.infer<typeof RegisterBody>;
 export type LoginBodyType = z.infer<typeof LoginBody>;
 export type InitUploadBodyType = z.infer<typeof InitUploadBody>;
+export type RecordChunkBodyType = z.infer<typeof RecordChunkBody>;
 export type CompleteUploadBodyType = z.infer<typeof CompleteUploadBody>;
 export type ShareUserBodyType = z.infer<typeof ShareUserBody>;
 export type ShareLinkBodyType = z.infer<typeof ShareLinkBody>;

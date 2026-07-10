@@ -5,3 +5,4 @@ sync-folder/*
 .env
 *.env.local
 apps/sync/.sync-state.json
+.claude/

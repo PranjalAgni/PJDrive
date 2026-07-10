@@ -55,4 +55,185 @@ describe('GET /upload/status/:uploadId', () => {
     expect(res.body.uploadedChunks).toEqual([]);
     expect(res.body.totalChunks).toBe(1);
   });
+
+  it('returns fresh presigned chunk URLs for an in-progress upload when a resume opts in via ?presign=1', async () => {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'resume-urls.txt', mimeType: 'text/plain', sizeBytes: 3 * 10485760, totalChunks: 3, checksum: 'urls123' });
+
+    const { uploadId } = initRes.body;
+
+    const res = await request(app)
+      .get(`/upload/status/${uploadId}?presign=1`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('in_progress');
+    expect(res.body.chunkUrls).toHaveLength(3);
+    expect(res.body.chunkUrls[0]).toContain('partNumber=1');
+  });
+
+  it('does not presign chunk URLs when the caller only polls progress (no ?presign flag)', async () => {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'poll-only.txt', mimeType: 'text/plain', sizeBytes: 3 * 10485760, totalChunks: 3, checksum: 'poll123' });
+
+    const { uploadId } = initRes.body;
+
+    const res = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('in_progress');
+    expect(res.body.chunkUrls).toEqual([]);
+  });
+});
+
+describe('POST /upload/chunk', () => {
+  async function initUpload(totalChunks: number) {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'chunk-test.txt', mimeType: 'text/plain', sizeBytes: totalChunks * 10485760, totalChunks, checksum: 'chk789' });
+    return initRes.body.uploadId as string;
+  }
+
+  it('requires auth', async () => {
+    const res = await request(app).post('/upload/chunk').send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('records a completed chunk so it surfaces in status and enables resume', async () => {
+    const uploadId = await initUpload(2);
+
+    const chunkRes = await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-abc"' });
+    expect(chunkRes.status).toBe(200);
+
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.uploadedChunks).toEqual(['1:"etag-abc"']);
+    expect(statusRes.body.totalChunks).toBe(2);
+  });
+
+  it('is idempotent - recording the same chunk twice does not duplicate it', async () => {
+    const uploadId = await initUpload(2);
+
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-dup"' });
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-dup"' });
+
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.uploadedChunks).toEqual(['1:"etag-dup"']);
+  });
+
+  it('rejects a partNumber greater than the upload\'s total_chunks', async () => {
+    const uploadId = await initUpload(2);
+
+    const chunkRes = await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 5, eTag: '"etag-oob"' });
+    expect(chunkRes.status).toBe(400);
+    expect(chunkRes.body.error).toBe('partNumber out of range');
+
+    // The out-of-range part must not have been recorded.
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.uploadedChunks).toEqual([]);
+  });
+
+  it('rejects recording a chunk for another user\'s upload', async () => {
+    const uploadId = await initUpload(1);
+
+    await pool.query("DELETE FROM users WHERE email = 'other-upload@example.com'");
+    const otherRes = await request(app)
+      .post('/auth/register')
+      .send({ email: 'other-upload@example.com', password: 'password123' });
+    const otherToken = otherRes.body.token;
+
+    const chunkRes = await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-x"' });
+    expect(chunkRes.status).toBe(404);
+
+    await pool.query("DELETE FROM users WHERE email = 'other-upload@example.com'");
+  });
+});
+
+describe('POST /upload/complete', () => {
+  async function initUpload(totalChunks: number) {
+    const initRes = await request(app)
+      .post('/upload/init')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ fileName: 'complete-test.txt', mimeType: 'text/plain', sizeBytes: totalChunks * 10485760, totalChunks, checksum: 'cmp789' });
+    return initRes.body.uploadId as string;
+  }
+
+  it('requires auth', async () => {
+    const res = await request(app).post('/upload/complete').send({});
+    expect(res.status).toBe(401);
+  });
+
+  it('refuses to finalize when a recorded part is missing, reporting which parts are absent', async () => {
+    const uploadId = await initUpload(3);
+
+    // Only parts 1 and 3 land; part 2 never gets recorded (e.g. client crashed / bug).
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 1, eTag: '"etag-1"' });
+    await request(app)
+      .post('/upload/chunk')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId, partNumber: 3, eTag: '"etag-3"' });
+
+    // Even if a buggy client claims all parts are present, the server refuses:
+    // it trusts only its own recorded chunks, not the client-supplied parts list.
+    const res = await request(app)
+      .post('/upload/complete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        uploadId,
+        parts: [
+          { partNumber: 1, eTag: '"etag-1"' },
+          { partNumber: 2, eTag: '"etag-2-fake"' },
+          { partNumber: 3, eTag: '"etag-3"' },
+        ],
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('upload incomplete');
+    expect(res.body.missingParts).toEqual([2]);
+    expect(res.body.totalChunks).toBe(3);
+
+    // The upload stays in_progress so the client can still resume the missing part.
+    const statusRes = await request(app)
+      .get(`/upload/status/${uploadId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(statusRes.body.status).toBe('in_progress');
+  });
+
+  it('returns 404 for an unknown upload', async () => {
+    const res = await request(app)
+      .post('/upload/complete')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ uploadId: '00000000-0000-0000-0000-000000000000' });
+    expect(res.status).toBe(404);
+  });
 });

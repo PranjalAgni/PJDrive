@@ -307,10 +307,19 @@ CREATE TABLE uploads (
 );
 ```
 
-On the client, before uploading chunks, the status is checked:
+Each chunk's ETag is recorded server-side as soon as its PUT succeeds, via `POST /upload/chunk`. This is what makes `uploaded_chunks` an accurate ledger of what actually landed:
 
 ```typescript
 // apps/web/src/lib/upload.ts
+const res = await axios.put(chunkUrls[i + j], chunk, { headers: { 'Content-Type': 'application/octet-stream' } });
+const eTag = res.headers.etag;
+// Persist the completed chunk so a later retry can resume instead of re-uploading it.
+await apiClient.post('/upload/chunk', { uploadId, partNumber, eTag });
+```
+
+On resume, the client reads back the recorded chunks and skips them (the desktop sync client passes `?presign=1` to also get fresh PUT URLs for the remaining parts):
+
+```typescript
 const statusRes = await apiClient.get(`/upload/status/${uploadId}`);
 const alreadyUploadedParts = (statusRes.data.uploadedChunks || [])
   .filter((e: string) => e.includes(':'))
@@ -319,14 +328,13 @@ const alreadyUploadedParts = (statusRes.data.uploadedChunks || [])
     return { partNumber: parseInt(num, 10), eTag: eTagParts.join(':') };
   });
 
-// Seed parts with already-completed chunks
-const parts = [...alreadyUploadedParts];
-
 // Skip chunks that are already uploaded
 if (alreadyUploadedNumbers.includes(partNumber)) return null;
 ```
 
-**Why:** A 50GB upload interrupted at 90% should resume from 90%, not restart. The upload ID is the idempotency key — the server tracks exactly which chunks succeeded.
+Completion is server-authoritative: `POST /upload/complete` ignores the client's self-reported parts list and reconstructs the S3 manifest from `uploads.uploaded_chunks`, returning `409 upload incomplete` if any part `1..total_chunks` was never recorded.
+
+**Why:** A 50GB upload interrupted at 90% should resume from 90%, not restart. The upload ID is the idempotency key - the server tracks exactly which chunks succeeded, so a resumed or buggy client cannot finalize a truncated file by omitting a part.
 
 ---
 
